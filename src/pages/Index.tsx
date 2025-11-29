@@ -1,234 +1,153 @@
-import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
-import HeroVideo from "@/components/HeroVideo";
+import TriplePanelHero from "@/components/TriplePanelHero";
+import PartnerLogoGrid from "@/components/PartnerLogoGrid";
+import ServiceCard from "@/components/ServiceCard";
+import ShopCarousel from "@/components/ShopCarousel";
+import WhyWorkWithUs from "@/components/WhyWorkWithUs";
 import AnimatedSection from "@/components/AnimatedSection";
-import FeatureCard from "@/components/FeatureCard";
-import { Button } from "@/components/ui/button";
-import { 
-  Trophy, 
-  Target, 
-  Zap, 
-  Users, 
-  TrendingUp, 
-  Shield,
-  Sparkles,
-  ChevronRight
-} from "lucide-react";
+import { Target, TrendingUp, Users, Zap } from "lucide-react";
 
 const Index = () => {
+  const navigate = useNavigate();
+
   const partners = [
-    "GFUEL", "NBC SPORTS", "CVS", "ELECTROLIT", "XENITH", "CONCUSSION COLLAR"
+    { name: "Partner 1", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop" },
+    { name: "Partner 2", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop" },
+    { name: "Partner 3", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop" },
+    { name: "Partner 4", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop" },
+    { name: "Partner 5", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop" },
+    { name: "Partner 6", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop" },
+    { name: "Partner 7", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop" },
+    { name: "Partner 8", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop" },
+  ];
+
+  const shopItems = [
+    { 
+      id: "1", 
+      title: "SSG Jersey", 
+      price: "$79.99",
+      image: "https://images.unsplash.com/photo-1627384113743-6bd5a479fffd?w=600&h=600&fit=crop"
+    },
+    { 
+      id: "2", 
+      title: "SSG Cap", 
+      price: "$29.99",
+      image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=600&h=600&fit=crop"
+    },
+    { 
+      id: "3", 
+      title: "SSG Hoodie", 
+      price: "$89.99",
+      image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600&h=600&fit=crop"
+    },
+    { 
+      id: "4", 
+      title: "SSG Backpack", 
+      price: "$59.99",
+      image: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600&h=600&fit=crop"
+    },
+    { 
+      id: "5", 
+      title: "SSG Water Bottle", 
+      price: "$24.99",
+      image: "https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=600&h=600&fit=crop"
+    },
+  ];
+
+  const whyWorkReasons = [
+    "The First Student-Focused NIL Marketing Agency",
+    "Gen-Z Led and Operated",
+    "Non-Exclusive Partnerships",
+    "Certified Marketing Experts",
+    "For Athletes and Brands Of All Sizes",
+    "Comprehensive Support",
   ];
 
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      {/* Hero Section */}
-      <HeroVideo
-        title={["CONNECTING", "ATHLETES &", "BRANDS"]}
-        subtitle="Premium sports marketing solutions powered by next-generation technology"
-        overlayOpacity={0.6}
-        cta={
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Link to="/athlete-intake">
-              <Button 
-                size="lg" 
-                className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-lg px-8 py-6 tracking-wider group"
-              >
-                JOIN AS ATHLETE
-                <ChevronRight className="ml-2 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </Link>
-            <Link to="/brand-intake">
-              <Button 
-                size="lg" 
-                variant="outline"
-                className="border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground font-bold text-lg px-8 py-6 tracking-wider"
-              >
-                PARTNER WITH US
-              </Button>
-            </Link>
-          </div>
-        }
+      {/* Triple Panel Hero - Exactly like Tykoon */}
+      <TriplePanelHero
+        mainTitle="STUDENT SPONSOR GATEWAY"
+        leftPanelText=""
+        middlePanelText="BUILDING BRANDS"
+        rightPanelText="ONE ATHLETE AT A TIME"
+        ctaText="JOIN THE ROSTER"
+        onCtaClick={() => navigate("/athlete-intake")}
       />
 
-      {/* Why Work With Us Section */}
+      {/* Why Work With Us - Yellow Typography + Image */}
+      <WhyWorkWithUs 
+        reasons={whyWorkReasons}
+        image="https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800&h=1000&fit=crop"
+      />
+
+      {/* Partner Logos Grid */}
+      <PartnerLogoGrid partners={partners} autoScroll={false} />
+
+      {/* Service Cards - 2x2 Grid with Hover Animations */}
       <AnimatedSection className="py-32 bg-muted/30">
         <div className="container mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
-            className="text-center mb-20"
-          >
-            <h2 className="text-5xl md:text-6xl font-black tracking-wider mb-6">
-              WHY <span className="text-primary">SSG</span>?
+          <div className="text-center mb-16">
+            <h2 className="text-5xl md:text-6xl font-black tracking-wider uppercase">
+              OUR <span className="text-primary">SERVICES</span>
             </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              The premier destination for athlete-brand partnerships in the digital age
-            </p>
-          </motion.div>
+          </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <FeatureCard
-              icon={<Trophy />}
-              title="Premium Partnerships"
-              description="Connect with top-tier brands and elite athletes through our exclusive network"
+          <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
+            <ServiceCard
+              icon={<Target />}
+              title="BRAND MATCHING"
+              description="Connect with brands that align perfectly with your values, audience, and goals through our AI-powered matching system."
+              delay={0}
+              onClick={() => navigate("/ai-features")}
+            />
+            <ServiceCard
+              icon={<TrendingUp />}
+              title="CAMPAIGN MANAGEMENT"
+              description="Launch, track, and optimize your sponsorship campaigns with real-time analytics and performance insights."
               delay={0.1}
             />
-            <FeatureCard
-              icon={<Sparkles />}
-              title="AI-Powered Matching"
-              description="Advanced algorithms ensure perfect brand-athlete alignment for maximum impact"
+            <ServiceCard
+              icon={<Users />}
+              title="TALENT REPRESENTATION"
+              description="Professional athlete management services including contract negotiation, brand strategy, and partnership development."
               delay={0.2}
             />
-            <FeatureCard
-              icon={<Target />}
-              title="Data-Driven Results"
-              description="Real-time analytics and insights to measure and optimize every campaign"
+            <ServiceCard
+              icon={<Zap />}
+              title="CONTENT CREATION"
+              description="End-to-end content production services to showcase athletes and maximize brand engagement across all platforms."
               delay={0.3}
             />
-            <FeatureCard
-              icon={<Users />}
-              title="Expert Support"
-              description="Dedicated team of marketing professionals guiding you every step"
-              delay={0.4}
-            />
-            <FeatureCard
-              icon={<TrendingUp />}
-              title="Proven Growth"
-              description="Our partnerships consistently deliver exponential brand growth and engagement"
-              delay={0.5}
-            />
-            <FeatureCard
-              icon={<Shield />}
-              title="Trusted Platform"
-              description="Secure, transparent, and compliant with all industry regulations"
-              delay={0.6}
-            />
           </div>
         </div>
       </AnimatedSection>
 
-      {/* Partners Section */}
+      {/* Shop Section - Horizontal Carousel */}
+      <ShopCarousel items={shopItems} />
+
+      {/* Stats Section */}
       <AnimatedSection className="py-32 bg-background">
         <div className="container mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-5xl md:text-6xl font-black tracking-wider mb-6">
-              OUR <span className="text-primary">PARTNERS</span>
-            </h2>
-            <p className="text-xl text-muted-foreground">
-              Trusted by industry leaders
-            </p>
-          </motion.div>
-
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8">
-            {partners.map((partner, index) => (
-              <motion.div
-                key={partner}
-                initial={{ opacity: 0, scale: 0.8 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-                whileHover={{ scale: 1.1 }}
-                className="aspect-square bg-card border border-border rounded-lg flex items-center justify-center p-6 cursor-pointer"
-              >
-                <span className="font-bold text-sm text-center tracking-wider text-muted-foreground group-hover:text-primary transition-colors">
-                  {partner}
-                </span>
-              </motion.div>
-            ))}
+          <div className="grid md:grid-cols-3 gap-12 text-center">
+            <div>
+              <h3 className="text-6xl md:text-7xl font-black text-primary mb-4">5000+</h3>
+              <p className="text-xl text-muted-foreground tracking-wider uppercase">Athletes</p>
+            </div>
+            <div>
+              <h3 className="text-6xl md:text-7xl font-black text-primary mb-4">500+</h3>
+              <p className="text-xl text-muted-foreground tracking-wider uppercase">Brands</p>
+            </div>
+            <div>
+              <h3 className="text-6xl md:text-7xl font-black text-primary mb-4">$10M+</h3>
+              <p className="text-xl text-muted-foreground tracking-wider uppercase">Deals Closed</p>
+            </div>
           </div>
         </div>
       </AnimatedSection>
-
-      {/* CTA Section */}
-      <AnimatedSection className="py-32 bg-gradient-to-br from-primary/10 via-background to-background">
-        <div className="container mx-auto px-6 text-center">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
-            className="max-w-4xl mx-auto"
-          >
-            <h2 className="text-5xl md:text-6xl font-black tracking-wider mb-8">
-              READY TO <span className="text-primary">ELEVATE</span> YOUR GAME?
-            </h2>
-            <p className="text-xl text-muted-foreground mb-12 max-w-2xl mx-auto">
-              Join the platform that's revolutionizing athlete-brand partnerships
-            </p>
-            <div className="flex flex-col sm:flex-row gap-6 justify-center">
-              <Link to="/how-it-works">
-                <Button 
-                  size="lg"
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-lg px-12 py-7 tracking-wider"
-                >
-                  LEARN MORE
-                </Button>
-              </Link>
-              <Link to="/contact">
-                <Button 
-                  size="lg"
-                  variant="outline"
-                  className="border-2 border-foreground text-foreground hover:bg-foreground hover:text-background font-bold text-lg px-12 py-7 tracking-wider"
-                >
-                  GET IN TOUCH
-                </Button>
-              </Link>
-            </div>
-          </motion.div>
-        </div>
-      </AnimatedSection>
-
-      {/* Footer */}
-      <footer className="bg-card border-t border-border py-12">
-        <div className="container mx-auto px-6">
-          <div className="grid md:grid-cols-4 gap-8">
-            <div>
-              <h3 className="font-black text-2xl mb-4 tracking-wider">
-                SSG<span className="text-primary">.</span>
-              </h3>
-              <p className="text-muted-foreground">
-                Premium sports marketing solutions
-              </p>
-            </div>
-            <div>
-              <h4 className="font-bold mb-4 tracking-wider">COMPANY</h4>
-              <ul className="space-y-2 text-muted-foreground">
-                <li><Link to="/about" className="hover:text-primary transition-colors">About</Link></li>
-                <li><Link to="/timeline" className="hover:text-primary transition-colors">Timeline</Link></li>
-                <li><Link to="/contact" className="hover:text-primary transition-colors">Contact</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-bold mb-4 tracking-wider">SERVICES</h4>
-              <ul className="space-y-2 text-muted-foreground">
-                <li><Link to="/how-it-works" className="hover:text-primary transition-colors">How It Works</Link></li>
-                <li><Link to="/ai-features" className="hover:text-primary transition-colors">AI Features</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-bold mb-4 tracking-wider">GET STARTED</h4>
-              <ul className="space-y-2 text-muted-foreground">
-                <li><Link to="/athlete-intake" className="hover:text-primary transition-colors">Athlete Signup</Link></li>
-                <li><Link to="/brand-intake" className="hover:text-primary transition-colors">Brand Signup</Link></li>
-              </ul>
-            </div>
-          </div>
-          <div className="mt-12 pt-8 border-t border-border text-center text-muted-foreground">
-            <p>&copy; 2025 SSG. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 };
