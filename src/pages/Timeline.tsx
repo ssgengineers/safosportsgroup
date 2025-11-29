@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import Navigation from "@/components/Navigation";
+import Navigation from "@/components/layout/Navigation";
 import AnimatedSection from "@/components/AnimatedSection";
 import { Calendar } from "lucide-react";
 
