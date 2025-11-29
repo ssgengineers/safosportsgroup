@@ -35,12 +35,14 @@ const TriplePanelHero = ({
         transition={{ duration: 1, delay: 0.2 }}
         className="relative flex-1 h-full overflow-hidden"
       >
-        <div 
+        <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
             backgroundImage: leftImage ? `url(${leftImage})` : 'linear-gradient(135deg, hsl(var(--muted)) 0%, hsl(var(--background)) 100%)',
           }}
         >
+          {/* Yellow tint overlay for SSG branding */}
+          <div className="absolute inset-0 bg-primary/10 mix-blend-overlay" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/40 to-background/80" />
         </div>
         
@@ -140,7 +142,7 @@ const TriplePanelHero = ({
           transition={{ duration: 1, delay: 0.8 }}
           className="text-center px-6"
         >
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-black tracking-[0.15em] text-foreground uppercase mb-12 leading-tight pointer-events-auto">
+          <h1 className="font-heading text-5xl md:text-7xl lg:text-8xl font-black tracking-[0.15em] text-foreground uppercase mb-12 leading-tight pointer-events-auto">
             {mainTitle}
           </h1>
           

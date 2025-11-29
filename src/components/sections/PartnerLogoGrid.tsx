@@ -30,11 +30,11 @@ const PartnerLogoGrid = ({ partners, autoScroll = false }: PartnerLogoGridProps)
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
+          viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.8 }}
           className="text-center mb-16"
         >
-          <h2 className="text-5xl md:text-6xl font-black tracking-wider uppercase">
+          <h2 className="font-heading text-5xl md:text-6xl font-black tracking-wider uppercase">
             OUR <span className="text-primary">PARTNERS</span>
           </h2>
         </motion.div>
