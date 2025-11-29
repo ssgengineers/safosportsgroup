@@ -11,6 +11,7 @@ import Timeline from "./pages/Timeline";
 import Contact from "./pages/Contact";
 import AthleteIntake from "./pages/AthleteIntake";
 import BrandIntake from "./pages/BrandIntake";
+import ForUniversities from "./pages/ForUniversities";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
           <Route path="/contact" element={<Contact />} />
           <Route path="/athlete-intake" element={<AthleteIntake />} />
           <Route path="/brand-intake" element={<BrandIntake />} />
+          <Route path="/for-universities" element={<ForUniversities />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
