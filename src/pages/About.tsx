@@ -5,12 +5,18 @@ import { Users, Heart, Target, Award } from "lucide-react";
 
 const About = () => {
   const team = [
-    { name: "Alex Rivera", role: "CEO & Founder", image: "AR" },
-    { name: "Jordan Chen", role: "CTO", image: "JC" },
-    { name: "Taylor Morgan", role: "Head of Partnerships", image: "TM" },
-    { name: "Casey Williams", role: "AI Lead", image: "CW" },
-    { name: "Morgan Davis", role: "Marketing Director", image: "MD" },
-    { name: "Sam Thompson", role: "Operations Manager", image: "ST" },
+    { name: "Michael Safo", role: "Co-Founder", image: "/Headshots/michael.jpeg" },
+    { name: "Ny'Eeem Aloryi", role: "Co-Founder", image: "/Headshots/Nyeem.jpeg" },
+    { name: "Arden Lawson", role: "Executive Advisor", image: "/Headshots/ARDEN.jpeg" },
+    { name: "Kayla Patterson", role: "Executive Advisor", image: "/Headshots/kayla.jpeg" },
+    { name: "Peter Njoroge", role: "Developer", image: "/Headshots/peter.jpeg" },
+    { name: "Daniel Odetoye", role: "Developer", image: "/Headshots/daniel.jpeg" },
+    { name: "Mitchell Taribi", role: "Developer", image: "/Headshots/mitchell.jpeg" },
+    { name: "Emmanuel Adedeji", role: "Developer", image: "/Headshots/emmanuel.jpeg" },
+    { name: "Jason Christopher", role: "Content Director", image: "/Headshots/jason.jpeg" },
+    { name: "Nimisokan Ojikoto", role: "Recruiting Director", image: "/Headshots/nimi.jpeg" },
+    { name: "Jackson Greenbaum", role: "Content Director", image: "/Headshots/jackson.jpeg" },
+    { name: "Filler", role: "filler", image: null },
   ];
 
   const values = [
@@ -146,8 +152,16 @@ const About = () => {
                 whileHover={{ y: -10 }}
                 className="bg-card rounded-xl overflow-hidden border border-border hover:border-primary transition-all cursor-pointer"
               >
-                <div className="aspect-square bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                  <span className="text-6xl font-black text-primary">{member.image}</span>
+                <div className="aspect-square bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center overflow-hidden">
+                  {member.image ? (
+                    <img 
+                      src={member.image} 
+                      alt={member.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-6xl font-black text-primary">?</span>
+                  )}
                 </div>
                 <div className="p-6 text-center">
                   <h3 className="text-xl font-bold mb-1">{member.name}</h3>

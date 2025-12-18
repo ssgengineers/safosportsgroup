@@ -52,13 +52,13 @@ const PartnerLogoGrid = ({ partners, autoScroll = false }: PartnerLogoGridProps)
                 y: -5,
                 transition: { duration: 0.3 }
               }}
-              className="relative w-full h-24 flex items-center justify-center group cursor-pointer"
+              className="relative w-full h-24 flex items-center justify-center group cursor-pointer bg-white rounded-lg p-4 shadow-sm"
             >
               <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/5 rounded-lg transition-all duration-300" />
               <img
                 src={partner.logo}
                 alt={partner.name}
-                className="max-w-full max-h-full object-contain filter grayscale group-hover:grayscale-0 transition-all duration-300 opacity-60 group-hover:opacity-100"
+                className="max-w-full max-h-full object-contain transition-all duration-300 opacity-100"
               />
             </motion.div>
           ))}

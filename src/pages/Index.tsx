@@ -13,14 +13,14 @@ const Index = () => {
   const navigate = useNavigate();
 
   const partners = [
-    { name: "Nike", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop&q=80" },
-    { name: "Adidas", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop&q=80" },
-    { name: "Gatorade", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop&q=80" },
-    { name: "Under Armour", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop&q=80" },
-    { name: "Red Bull", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop&q=80" },
-    { name: "Puma", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop&q=80" },
-    { name: "New Balance", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop&q=80" },
-    { name: "Reebok", logo: "https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?w=200&h=100&fit=crop&q=80" },
+    { name: "Pepsi", logo: "/PartnerLogos/pepsi-logo-png-transparent.png" },
+    { name: "Under Armour", logo: "/PartnerLogos/Under_Armour-Logo.wine.png" },
+    { name: "Owala", logo: "/PartnerLogos/Owala_Logo.svg.png" },
+    { name: "Ledo Pizza", logo: "/PartnerLogos/Ledo_Pizza_logo.png" },
+    { name: "SARDI's", logo: "/PartnerLogos/SARDIs-Logo-Horizontal.png" },
+    { name: "Brusters", logo: "/PartnerLogos/brusters.png" },
+    { name: "SS Logo", logo: "/PartnerLogos/SS Logo Black.png.avif" },
+    { name: "Partner", logo: "/PartnerLogos/images.png" },
   ];
 
   const services = [
@@ -71,7 +71,7 @@ const Index = () => {
 
       {/* Triple Panel Hero - Exactly like Tykoon */}
       <TriplePanelHero
-        mainTitle="STUDENT SPONSOR GATEWAY"
+        mainTitle="Safo Sports Group"
         leftPanelText="EMPOWERING ATHLETES"
         middlePanelText="CONNECTING BRANDS"
         rightPanelText="BUILDING FUTURES"

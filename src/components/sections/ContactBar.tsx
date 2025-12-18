@@ -81,12 +81,11 @@ export const ContactBar = ({
               <Link to={secondaryButtonLink}>
                 <Button
                   size="lg"
-                  variant="outline"
                   className={`${
                     backgroundColor === "yellow"
-                      ? "border-background text-background hover:bg-background hover:text-primary"
-                      : "border-foreground text-foreground hover:bg-foreground hover:text-background"
-                  } font-bold tracking-wider uppercase px-8 py-6 text-lg group border-2`}
+                      ? "bg-background text-primary hover:bg-background/90"
+                      : "bg-primary text-background hover:bg-primary/90"
+                  } font-bold tracking-wider uppercase px-8 py-6 text-lg group`}
                 >
                   {secondaryButtonText}
                   <motion.div
