@@ -4,29 +4,174 @@ import Navigation from "@/components/layout/Navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle, ChevronRight } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { CheckCircle, ChevronRight, Plus, X, Edit, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+interface SocialAccount {
+  platform: string;
+  handle: string;
+}
 
 const AthleteIntake = () => {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
   const [formData, setFormData] = useState({
-    name: "",
+    firstName: "",
+    lastName: "",
     email: "",
+    dateOfBirth: "",
+    location: "",
+    school: "",
     sport: "",
-    team: "",
-    social: "",
-    followers: "",
+    position: "",
     bio: "",
     goals: ""
   });
 
+  const [primarySocial, setPrimarySocial] = useState<SocialAccount>({
+    platform: "",
+    handle: ""
+  });
+
+  const [additionalSocials, setAdditionalSocials] = useState<SocialAccount[]>([]);
+
+  const socialPlatforms = [
+    "Instagram",
+    "TikTok",
+    "Twitter/X",
+    "YouTube",
+    "Facebook",
+    "Snapchat",
+    "LinkedIn",
+    "Twitch"
+  ];
+
+  const addSocialAccount = () => {
+    setAdditionalSocials([...additionalSocials, { platform: "", handle: "" }]);
+  };
+
+  const removeSocialAccount = (index: number) => {
+    setAdditionalSocials(additionalSocials.filter((_, i) => i !== index));
+  };
+
+  const updateAdditionalSocial = (index: number, field: keyof SocialAccount, value: string) => {
+    const updated = [...additionalSocials];
+    updated[index][field] = value;
+    setAdditionalSocials(updated);
+  };
+
+  const isValidEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validateStep1 = () => {
+    return (
+      formData.firstName.trim() !== "" &&
+      formData.lastName.trim() !== "" &&
+      formData.email.trim() !== "" &&
+      isValidEmail(formData.email) &&
+      formData.dateOfBirth.trim() !== "" &&
+      formData.location.trim() !== ""
+    );
+  };
+
+  const validateStep2 = () => {
+    return (
+      formData.school.trim() !== "" &&
+      formData.sport.trim() !== "" &&
+      formData.position.trim() !== ""
+    );
+  };
+
+  const validateStep3 = () => {
+    return (
+      primarySocial.platform !== "" &&
+      primarySocial.handle.trim() !== ""
+    );
+  };
+
+  const validateStep4 = () => {
+    return (
+      formData.bio.trim() !== "" &&
+      formData.goals.trim() !== ""
+    );
+  };
+
+  const canProceed = () => {
+    switch (step) {
+      case 1: return validateStep1();
+      case 2: return validateStep2();
+      case 3: return validateStep3();
+      case 4: return validateStep4();
+      default: return false;
+    }
+  };
+
+  const handleNext = () => {
+    if (step === 1 && formData.email.trim() !== "" && !isValidEmail(formData.email)) {
+      toast({
+        title: "Invalid Email",
+        description: "Please enter a valid email address.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (!canProceed()) {
+      toast({
+        title: "Please fill in all fields",
+        description: "All fields are required before moving to the next step.",
+        variant: "destructive"
+      });
+      return;
+    }
+    setStep(step + 1);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateStep4()) {
+      toast({
+        title: "Please fill in all fields",
+        description: "All fields are required to submit your application.",
+        variant: "destructive"
+      });
+      return;
+    }
+    setShowConfirmation(true);
+  };
+
+  const handleFinalSubmit = () => {
+    setShowConfirmation(false);
+    setIsSubmitted(true);
     toast({
       title: "Application Submitted!",
       description: "We'll review your profile and be in touch within 48 hours.",
     });
+    
+    window.location.href = "/";
+  };
+
+  const goToStep = (targetStep: number) => {
+    setShowConfirmation(false);
+    setStep(targetStep);
   };
 
   const steps = [
@@ -94,18 +239,36 @@ const AthleteIntake = () => {
                 className="space-y-6"
               >
                 <h2 className="text-3xl font-bold mb-8">Personal Information</h2>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold tracking-wider">FULL NAME</label>
-                  <Input
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Your full name"
-                    required
-                    className="bg-background"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold tracking-wider">
+                      FIRST NAME <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      value={formData.firstName}
+                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                      placeholder="First name"
+                      required
+                      className="bg-background"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold tracking-wider">
+                      LAST NAME <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      value={formData.lastName}
+                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                      placeholder="Last name"
+                      required
+                      className="bg-background"
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold tracking-wider">EMAIL</label>
+                  <label className="text-sm font-semibold tracking-wider">
+                    EMAIL <span className="text-red-500">*</span>
+                  </label>
                   <Input
                     type="email"
                     value={formData.email}
@@ -114,6 +277,32 @@ const AthleteIntake = () => {
                     required
                     className="bg-background"
                   />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold tracking-wider">
+                      DATE OF BIRTH <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      type="date"
+                      value={formData.dateOfBirth}
+                      onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                      required
+                      className="bg-background"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold tracking-wider">
+                      WHERE DO YOU RESIDE? <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      value={formData.location}
+                      onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                      placeholder="City, State/Country"
+                      required
+                      className="bg-background"
+                    />
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -126,24 +315,42 @@ const AthleteIntake = () => {
               >
                 <h2 className="text-3xl font-bold mb-8">Athletic Background</h2>
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold tracking-wider">SPORT</label>
+                  <label className="text-sm font-semibold tracking-wider">
+                    SCHOOL <span className="text-red-500">*</span>
+                  </label>
                   <Input
-                    value={formData.sport}
-                    onChange={(e) => setFormData({ ...formData, sport: e.target.value })}
-                    placeholder="e.g., Basketball, Football, Soccer"
+                    value={formData.school}
+                    onChange={(e) => setFormData({ ...formData, school: e.target.value })}
+                    placeholder="Your school or university"
                     required
                     className="bg-background"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold tracking-wider">TEAM/ORGANIZATION</label>
-                  <Input
-                    value={formData.team}
-                    onChange={(e) => setFormData({ ...formData, team: e.target.value })}
-                    placeholder="Current team or organization"
-                    required
-                    className="bg-background"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold tracking-wider">
+                      SPORT <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      value={formData.sport}
+                      onChange={(e) => setFormData({ ...formData, sport: e.target.value })}
+                      placeholder="e.g., Basketball, Football, Soccer"
+                      required
+                      className="bg-background"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold tracking-wider">
+                      POSITION(S) <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      value={formData.position}
+                      onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                      placeholder="e.g., Point Guard, Quarterback"
+                      required
+                      className="bg-background"
+                    />
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -155,26 +362,99 @@ const AthleteIntake = () => {
                 className="space-y-6"
               >
                 <h2 className="text-3xl font-bold mb-8">Social Media</h2>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold tracking-wider">PRIMARY SOCIAL HANDLE</label>
-                  <Input
-                    value={formData.social}
-                    onChange={(e) => setFormData({ ...formData, social: e.target.value })}
-                    placeholder="@yourhandle"
-                    required
-                    className="bg-background"
-                  />
+                
+                {/* Primary Social Account */}
+                <div className="p-6 bg-background rounded-xl border border-border">
+                  <h3 className="text-lg font-semibold mb-4">Primary Social Account <span className="text-red-500">*</span></h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold tracking-wider">PLATFORM</label>
+                      <Select
+                        value={primarySocial.platform}
+                        onValueChange={(value) => setPrimarySocial({ ...primarySocial, platform: value })}
+                      >
+                        <SelectTrigger className="bg-card">
+                          <SelectValue placeholder="Select platform" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {socialPlatforms.map((platform) => (
+                            <SelectItem key={platform} value={platform}>
+                              {platform}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold tracking-wider">HANDLE</label>
+                      <Input
+                        value={primarySocial.handle}
+                        onChange={(e) => setPrimarySocial({ ...primarySocial, handle: e.target.value })}
+                        placeholder="@yourhandle"
+                        className="bg-card"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold tracking-wider">TOTAL FOLLOWERS</label>
-                  <Input
-                    value={formData.followers}
-                    onChange={(e) => setFormData({ ...formData, followers: e.target.value })}
-                    placeholder="Approximate total across all platforms"
-                    required
-                    className="bg-background"
-                  />
-                </div>
+
+                {/* Additional Social Accounts */}
+                {additionalSocials.map((social, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-6 bg-background rounded-xl border border-border relative"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => removeSocialAccount(index)}
+                      className="absolute top-4 right-4 text-muted-foreground hover:text-red-500 transition-colors"
+                    >
+                      <X size={20} />
+                    </button>
+                    <h3 className="text-lg font-semibold mb-4">Additional Account {index + 1}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold tracking-wider">PLATFORM</label>
+                        <Select
+                          value={social.platform}
+                          onValueChange={(value) => updateAdditionalSocial(index, "platform", value)}
+                        >
+                          <SelectTrigger className="bg-card">
+                            <SelectValue placeholder="Select platform" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {socialPlatforms.map((platform) => (
+                              <SelectItem key={platform} value={platform}>
+                                {platform}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold tracking-wider">HANDLE</label>
+                        <Input
+                          value={social.handle}
+                          onChange={(e) => updateAdditionalSocial(index, "handle", e.target.value)}
+                          placeholder="@yourhandle"
+                          className="bg-card"
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+
+                {/* Add More Button */}
+                <Button
+                  type="button"
+                  onClick={addSocialAccount}
+                  variant="outline"
+                  className="w-full border-dashed border-2 hover:border-primary hover:text-primary"
+                >
+                  <Plus className="mr-2" size={20} />
+                  Add Another Social Account
+                </Button>
               </motion.div>
             )}
 
@@ -186,7 +466,9 @@ const AthleteIntake = () => {
               >
                 <h2 className="text-3xl font-bold mb-8">Your Goals</h2>
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold tracking-wider">TELL US ABOUT YOURSELF</label>
+                  <label className="text-sm font-semibold tracking-wider">
+                    TELL US ABOUT YOURSELF <span className="text-red-500">*</span>
+                  </label>
                   <Textarea
                     value={formData.bio}
                     onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
@@ -197,7 +479,9 @@ const AthleteIntake = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold tracking-wider">PARTNERSHIP GOALS</label>
+                  <label className="text-sm font-semibold tracking-wider">
+                    PARTNERSHIP GOALS <span className="text-red-500">*</span>
+                  </label>
                   <Textarea
                     value={formData.goals}
                     onChange={(e) => setFormData({ ...formData, goals: e.target.value })}
@@ -225,8 +509,12 @@ const AthleteIntake = () => {
               {step < 4 ? (
                 <Button
                   type="button"
-                  onClick={() => setStep(step + 1)}
-                  className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 font-bold group"
+                  onClick={handleNext}
+                  className={`flex-1 font-bold group ${
+                    canProceed()
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                      : "bg-primary/50 text-primary-foreground/70 cursor-not-allowed"
+                  }`}
                 >
                   NEXT
                   <ChevronRight className="ml-2 group-hover:translate-x-1 transition-transform" />
@@ -234,7 +522,11 @@ const AthleteIntake = () => {
               ) : (
                 <Button
                   type="submit"
-                  className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 font-bold"
+                  className={`flex-1 font-bold ${
+                    canProceed()
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                      : "bg-primary/50 text-primary-foreground/70"
+                  }`}
                 >
                   SUBMIT APPLICATION
                 </Button>
@@ -243,6 +535,136 @@ const AthleteIntake = () => {
           </motion.form>
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={showConfirmation} onOpenChange={setShowConfirmation}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold">Review Your Application</DialogTitle>
+            <DialogDescription>
+              Please review your information before submitting. Click on any section to make changes.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Personal Info Summary */}
+            <div 
+              className="p-4 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors group"
+              onClick={() => goToStep(1)}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-lg">Personal Information</h3>
+                <Edit size={18} className="text-muted-foreground group-hover:text-primary transition-colors" />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <p><span className="text-muted-foreground">Name:</span> {formData.firstName} {formData.lastName}</p>
+                <p><span className="text-muted-foreground">Email:</span> {formData.email}</p>
+                <p><span className="text-muted-foreground">DOB:</span> {formData.dateOfBirth}</p>
+                <p><span className="text-muted-foreground">From:</span> {formData.location}</p>
+              </div>
+            </div>
+
+            {/* Athletic Background Summary */}
+            <div 
+              className="p-4 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors group"
+              onClick={() => goToStep(2)}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-lg">Athletic Background</h3>
+                <Edit size={18} className="text-muted-foreground group-hover:text-primary transition-colors" />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <p><span className="text-muted-foreground">School:</span> {formData.school}</p>
+                <p><span className="text-muted-foreground">Sport:</span> {formData.sport}</p>
+                <p><span className="text-muted-foreground">Position:</span> {formData.position}</p>
+              </div>
+            </div>
+
+            {/* Social Media Summary */}
+            <div 
+              className="p-4 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors group"
+              onClick={() => goToStep(3)}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-lg">Social Media</h3>
+                <Edit size={18} className="text-muted-foreground group-hover:text-primary transition-colors" />
+              </div>
+              <div className="space-y-1 text-sm">
+                <p><span className="text-muted-foreground">Primary:</span> {primarySocial.platform} - {primarySocial.handle}</p>
+                {additionalSocials.map((social, index) => (
+                  social.platform && social.handle && (
+                    <p key={index}><span className="text-muted-foreground">Additional:</span> {social.platform} - {social.handle}</p>
+                  )
+                ))}
+              </div>
+            </div>
+
+            {/* Goals Summary */}
+            <div 
+              className="p-4 bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors group"
+              onClick={() => goToStep(4)}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-lg">Goals</h3>
+                <Edit size={18} className="text-muted-foreground group-hover:text-primary transition-colors" />
+              </div>
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">About:</span>
+                  <p className="line-clamp-2">{formData.bio}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Partnership Goals:</span>
+                  <p className="line-clamp-2">{formData.goals}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex gap-3 sm:gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowConfirmation(false)}
+              className="flex-1"
+            >
+              <Edit className="mr-2" size={18} />
+              Make Changes
+            </Button>
+            <Button
+              onClick={handleFinalSubmit}
+              className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              <Send className="mr-2" size={18} />
+              Confirm & Submit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success State */}
+      {isSubmitted && (
+        <Dialog open={isSubmitted} onOpenChange={setIsSubmitted}>
+          <DialogContent className="text-center">
+            <DialogHeader>
+              <div className="mx-auto mb-4 w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center">
+                <CheckCircle className="w-10 h-10 text-green-500" />
+              </div>
+              <DialogTitle className="text-2xl font-bold">Application Submitted!</DialogTitle>
+              <DialogDescription className="text-base">
+                Thank you for applying, {formData.firstName}! We'll review your profile and be in touch within 48 hours.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="sm:justify-center mt-4">
+              <Button
+                onClick={() => window.location.href = "/"}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Return Home
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 };
