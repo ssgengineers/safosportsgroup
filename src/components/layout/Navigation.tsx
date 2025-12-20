@@ -3,6 +3,12 @@ import { Link, useLocation } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import {
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  UserButton,
+} from "@clerk/clerk-react";
 
 const Navigation = () => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -65,16 +71,43 @@ const Navigation = () => {
 
             {/* CTA Buttons */}
             <div className="hidden lg:flex items-center space-x-4">
-              <Link to="/athlete-intake">
-                <Button variant="outline" className="border-primary text-primary hover:bg-primary hover:text-primary-foreground">
-                  ATHLETE SIGNUP
-                </Button>
-              </Link>
-              <Link to="/brand-intake">
-                <Button className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold">
-                  BRAND SIGNUP
-                </Button>
-              </Link>
+              <SignedOut>
+                <SignInButton mode="modal">
+                  <Button variant="ghost" className="text-foreground hover:text-primary font-semibold">
+                    SIGN IN
+                  </Button>
+                </SignInButton>
+                <Link to="/athlete-intake">
+                  <Button variant="outline" className="border-primary text-primary hover:bg-primary hover:text-primary-foreground">
+                    ATHLETE SIGNUP
+                  </Button>
+                </Link>
+                <Link to="/brand-intake">
+                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold">
+                    BRAND SIGNUP
+                  </Button>
+                </Link>
+              </SignedOut>
+              <SignedIn>
+                <Link to="/athlete-intake">
+                  <Button variant="outline" className="border-primary text-primary hover:bg-primary hover:text-primary-foreground">
+                    ATHLETE SIGNUP
+                  </Button>
+                </Link>
+                <Link to="/brand-intake">
+                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold">
+                    BRAND SIGNUP
+                  </Button>
+                </Link>
+                <UserButton 
+                  afterSignOutUrl="/"
+                  appearance={{
+                    elements: {
+                      avatarBox: "w-10 h-10"
+                    }
+                  }}
+                />
+              </SignedIn>
             </div>
 
             {/* Mobile Menu Button */}
@@ -126,6 +159,25 @@ const Navigation = () => {
                   </motion.div>
                 ))}
                 <div className="mt-8 space-y-4">
+                  <SignedOut>
+                    <SignInButton mode="modal">
+                      <Button variant="ghost" className="w-full text-foreground hover:text-primary font-semibold">
+                        SIGN IN
+                      </Button>
+                    </SignInButton>
+                  </SignedOut>
+                  <SignedIn>
+                    <div className="flex justify-center mb-4">
+                      <UserButton 
+                        afterSignOutUrl="/"
+                        appearance={{
+                          elements: {
+                            avatarBox: "w-12 h-12"
+                          }
+                        }}
+                      />
+                    </div>
+                  </SignedIn>
                   <Link to="/athlete-intake" onClick={() => setIsMobileMenuOpen(false)}>
                     <Button variant="outline" className="w-full border-primary text-primary">
                       ATHLETE SIGNUP

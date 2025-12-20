@@ -12,6 +12,9 @@ import Contact from "./pages/Contact";
 import AthleteIntake from "./pages/AthleteIntake";
 import BrandIntake from "./pages/BrandIntake";
 import ForUniversities from "./pages/ForUniversities";
+import SignIn from "./pages/SignIn";
+import SignUp from "./pages/SignUp";
+import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +35,9 @@ const App = () => (
           <Route path="/athlete-intake" element={<AthleteIntake />} />
           <Route path="/brand-intake" element={<BrandIntake />} />
           <Route path="/for-universities" element={<ForUniversities />} />
+          <Route path="/sign-in" element={<SignIn />} />
+          <Route path="/sign-up" element={<SignUp />} />
+          <Route path="/admin" element={<Admin />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
