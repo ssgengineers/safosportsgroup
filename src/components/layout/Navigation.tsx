@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Menu, X, Shield } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,12 +8,18 @@ import {
   SignedOut,
   SignInButton,
   UserButton,
+  useUser,
 } from "@clerk/clerk-react";
 
 const Navigation = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [hasRedirected, setHasRedirected] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isSignedIn, isLoaded } = useUser();
+
+  const isAdmin = user?.publicMetadata?.role === "admin";
 
   useEffect(() => {
     const handleScroll = () => {
@@ -23,6 +29,13 @@ const Navigation = () => {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn && isAdmin && !hasRedirected && location.pathname === "/") {
+      setHasRedirected(true);
+      navigate("/admin");
+    }
+  }, [isLoaded, isSignedIn, isAdmin, hasRedirected, location.pathname, navigate]);
 
   const navLinks = [
     { name: "HOME", path: "/" },
@@ -89,6 +102,14 @@ const Navigation = () => {
                 </Link>
               </SignedOut>
               <SignedIn>
+                {isAdmin && (
+                  <Link to="/admin">
+                    <Button variant="ghost" className="text-primary hover:bg-primary/10 font-semibold">
+                      <Shield size={16} className="mr-2" />
+                      ADMIN
+                    </Button>
+                  </Link>
+                )}
                 <Link to="/athlete-intake">
                   <Button variant="outline" className="border-primary text-primary hover:bg-primary hover:text-primary-foreground">
                     ATHLETE SIGNUP
@@ -177,6 +198,14 @@ const Navigation = () => {
                         }}
                       />
                     </div>
+                    {isAdmin && (
+                      <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)}>
+                        <Button variant="ghost" className="w-full text-primary hover:bg-primary/10 font-semibold mb-2">
+                          <Shield size={16} className="mr-2" />
+                          ADMIN DASHBOARD
+                        </Button>
+                      </Link>
+                    )}
                   </SignedIn>
                   <Link to="/athlete-intake" onClick={() => setIsMobileMenuOpen(false)}>
                     <Button variant="outline" className="w-full border-primary text-primary">
