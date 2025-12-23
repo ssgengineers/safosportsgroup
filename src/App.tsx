@@ -15,6 +15,7 @@ import ForUniversities from "./pages/ForUniversities";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import Admin from "./pages/Admin";
+import BrandDashboard from "./pages/BrandDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
           <Route path="/sign-in" element={<SignIn />} />
           <Route path="/sign-up" element={<SignUp />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/brand-dashboard" element={<BrandDashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
