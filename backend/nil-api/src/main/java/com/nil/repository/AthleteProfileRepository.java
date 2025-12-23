@@ -26,6 +26,11 @@ public interface AthleteProfileRepository extends JpaRepository<AthleteProfile, 
     Optional<AthleteProfile> findByUserId(UUID userId);
 
     /**
+     * Check if profile exists for user.
+     */
+    boolean existsByUserId(UUID userId);
+
+    /**
      * Find athlete profile by user's Clerk ID.
      */
     @Query("SELECT ap FROM AthleteProfile ap WHERE ap.user.clerkId = :clerkId")

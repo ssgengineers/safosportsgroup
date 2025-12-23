@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIL API Test</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #EAB308; margin-bottom: 20px; }
+        h2 { color: #60a5fa; margin: 20px 0 10px; font-size: 1.2rem; }
+        .card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #EAB308;
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover { background: #ca8a04; }
+        button.secondary {
+            background: #3b82f6;
+            color: #fff;
+        }
+        pre {
+            background: #0a0a0a;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .status { padding: 10px; border-radius: 6px; margin-bottom: 15px; }
+        .status.success { background: rgba(34, 197, 94, 0.2); border: 1px solid #22c55e; }
+        .status.error { background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; }
+        .status.loading { background: rgba(59, 130, 246, 0.2); border: 1px solid #3b82f6; }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0 15px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        label { color: #a1a1aa; font-size: 14px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏈 NIL Platform API Test</h1>
+        
+        <div class="card">
+            <h2>1. Health Check</h2>
+            <button onclick="testHealth()">Test API Health</button>
+            <button class="secondary" onclick="testTables()">List Tables</button>
+            <div id="health-result"></div>
+        </div>
+
+        <div class="card">
+            <h2>2. List Athletes</h2>
+            <button onclick="listAthletes()">Get All Athletes</button>
+            <div id="athletes-result"></div>
+        </div>
+
+        <div class="card">
+            <h2>3. Create New Athlete</h2>
+            <div class="grid">
+                <div>
+                    <label>First Name</label>
+                    <input type="text" id="firstName" value="Test">
+                    
+                    <label>Last Name</label>
+                    <input type="text" id="lastName" value="Athlete">
+                    
+                    <label>Email</label>
+                    <input type="email" id="email" value="test@example.com">
+                </div>
+                <div>
+                    <label>Sport</label>
+                    <select id="sport">
+                        <option value="Football">Football</option>
+                        <option value="Basketball">Basketball</option>
+                        <option value="Soccer">Soccer</option>
+                        <option value="Volleyball">Volleyball</option>
+                        <option value="Baseball">Baseball</option>
+                        <option value="Softball">Softball</option>
+                        <option value="Track and Field">Track and Field</option>
+                        <option value="Swimming">Swimming</option>
+                        <option value="Tennis">Tennis</option>
+                        <option value="Golf">Golf</option>
+                        <option value="Wrestling">Wrestling</option>
+                        <option value="Lacrosse">Lacrosse</option>
+                        <option value="Cheerleading">Cheerleading</option>
+                        <option value="Esports">Esports</option>
+                    </select>
+                    
+                    <label>School</label>
+                    <input type="text" id="school" value="University of Maryland">
+                    
+                    <label>Position</label>
+                    <input type="text" id="position" value="Quarterback">
+                </div>
+            </div>
+            <label>Bio</label>
+            <textarea id="bio" rows="2">Star athlete with excellent performance and social media presence.</textarea>
+            
+            <button onclick="createAthlete()">Create Athlete</button>
+            <div id="create-result"></div>
+        </div>
+
+        <div class="card">
+            <h2>4. Check Completeness Score</h2>
+            <label>Athlete ID</label>
+            <input type="text" id="athleteId" placeholder="Enter athlete ID from list above">
+            <button onclick="checkCompleteness()">Get Completeness Score</button>
+            <div id="completeness-result"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8080/api/v1';
+        
+        function showResult(elementId, data, isError = false) {
+            const el = document.getElementById(elementId);
+            const statusClass = isError ? 'error' : 'success';
+            el.innerHTML = `
+                <div class="status ${statusClass}">
+                    ${isError ? '❌ Error' : '✅ Success'}
+                </div>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+        }
+        
+        function showLoading(elementId) {
+            document.getElementById(elementId).innerHTML = `
+                <div class="status loading">⏳ Loading...</div>
+            `;
+        }
+
+        async function testHealth() {
+            showLoading('health-result');
+            try {
+                const res = await fetch(`${API_URL}/health`);
+                const data = await res.json();
+                showResult('health-result', data);
+            } catch (err) {
+                showResult('health-result', { error: err.message }, true);
+            }
+        }
+
+        async function testTables() {
+            showLoading('health-result');
+            try {
+                const res = await fetch(`${API_URL}/tables`);
+                const data = await res.json();
+                showResult('health-result', data);
+            } catch (err) {
+                showResult('health-result', { error: err.message }, true);
+            }
+        }
+
+        async function listAthletes() {
+            showLoading('athletes-result');
+            try {
+                const res = await fetch(`${API_URL}/athletes`);
+                const data = await res.json();
+                showResult('athletes-result', data);
+            } catch (err) {
+                showResult('athletes-result', { error: err.message }, true);
+            }
+        }
+
+        async function createAthlete() {
+            showLoading('create-result');
+            const athlete = {
+                firstName: document.getElementById('firstName').value,
+                lastName: document.getElementById('lastName').value,
+                email: document.getElementById('email').value,
+                sport: document.getElementById('sport').value,
+                schoolName: document.getElementById('school').value,
+                position: document.getElementById('position').value,
+                bio: document.getElementById('bio').value
+            };
+            
+            try {
+                const res = await fetch(`${API_URL}/athletes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(athlete)
+                });
+                const data = await res.json();
+                showResult('create-result', data, !res.ok);
+                
+                // Auto-fill the athlete ID field
+                if (res.ok && data.id) {
+                    document.getElementById('athleteId').value = data.id;
+                }
+            } catch (err) {
+                showResult('create-result', { error: err.message }, true);
+            }
+        }
+
+        async function checkCompleteness() {
+            const id = document.getElementById('athleteId').value;
+            if (!id) {
+                showResult('completeness-result', { error: 'Please enter an athlete ID' }, true);
+                return;
+            }
+            
+            showLoading('completeness-result');
+            try {
+                const res = await fetch(`${API_URL}/athletes/${id}/completeness`);
+                const data = await res.json();
+                showResult('completeness-result', data, !res.ok);
+            } catch (err) {
+                showResult('completeness-result', { error: err.message }, true);
+            }
+        }
+
+        // Auto-test health on page load
+        window.onload = testHealth;
+    </script>
+</body>
+</html>
+

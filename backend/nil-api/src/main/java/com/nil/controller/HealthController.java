@@ -40,7 +40,7 @@ public class HealthController {
         
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
-            ResultSet rs = metaData.getTables(null, "PUBLIC", "%", new String[]{"TABLE"});
+            ResultSet rs = metaData.getTables(null, "public", "%", new String[]{"TABLE"});
             
             while (rs.next()) {
                 tables.add(rs.getString("TABLE_NAME"));
