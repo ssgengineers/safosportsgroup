@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Menu, X } from "lucide-react";
-// import { Building2 } from "lucide-react"; // : I need toncomment when brand role auth is set up
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Menu, X, Shield } from "lucide-react";
+// import { Building2 } from "lucide-react"; // TODO: Uncomment when brand role auth is set up
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,12 +9,18 @@ import {
   SignedOut,
   SignInButton,
   UserButton,
+  useUser,
 } from "@clerk/clerk-react";
 
 const Navigation = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [hasRedirected, setHasRedirected] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isSignedIn, isLoaded } = useUser();
+
+  const isAdmin = user?.publicMetadata?.role === "admin";
 
   useEffect(() => {
     const handleScroll = () => {
@@ -24,6 +30,13 @@ const Navigation = () => {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn && isAdmin && !hasRedirected && location.pathname === "/") {
+      setHasRedirected(true);
+      navigate("/admin");
+    }
+  }, [isLoaded, isSignedIn, isAdmin, hasRedirected, location.pathname, navigate]);
 
   const navLinks = [
     { name: "HOME", path: "/" },
@@ -72,34 +85,50 @@ const Navigation = () => {
 
             {/* CTA Buttons */}
             <div className="hidden lg:flex items-center space-x-4">
-              {/* TODO: Uncomment when brand role authentication is set up
-              <SignedIn>
-                <Link to="/brand-dashboard">
-                  <Button variant="ghost" className="text-primary hover:bg-primary/10 font-semibold">
-                    <Building2 size={16} className="mr-2" />
-                    BRAND PORTAL
-                  </Button>
-                </Link>
-              </SignedIn>
-              */}
               <SignedOut>
                 <SignInButton mode="modal">
                   <Button variant="ghost" className="text-foreground hover:text-primary font-semibold">
                     SIGN IN
                   </Button>
                 </SignInButton>
+                <Link to="/athlete-intake">
+                  <Button variant="outline" className="border-primary text-primary hover:bg-primary hover:text-primary-foreground">
+                    ATHLETE SIGNUP
+                  </Button>
+                </Link>
+                <Link to="/brand-intake">
+                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold">
+                    BRAND SIGNUP
+                  </Button>
+                </Link>
               </SignedOut>
-              <Link to="/athlete-intake">
-                <Button variant="outline" className="border-primary text-primary hover:bg-primary hover:text-primary-foreground">
-                  ATHLETE SIGNUP
-                </Button>
-              </Link>
-              <Link to="/brand-intake">
-                <Button className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold">
-                  BRAND SIGNUP
-                </Button>
-              </Link>
               <SignedIn>
+                {isAdmin && (
+                  <Link to="/admin">
+                    <Button variant="ghost" className="text-primary hover:bg-primary/10 font-semibold">
+                      <Shield size={16} className="mr-2" />
+                      ADMIN
+                    </Button>
+                  </Link>
+                )}
+                {/* TODO: Uncomment when brand role authentication is set up
+                <Link to="/brand-dashboard">
+                  <Button variant="ghost" className="text-primary hover:bg-primary/10 font-semibold">
+                    <Building2 size={16} className="mr-2" />
+                    BRAND PORTAL
+                  </Button>
+                </Link>
+                */}
+                <Link to="/athlete-intake">
+                  <Button variant="outline" className="border-primary text-primary hover:bg-primary hover:text-primary-foreground">
+                    ATHLETE SIGNUP
+                  </Button>
+                </Link>
+                <Link to="/brand-intake">
+                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold">
+                    BRAND SIGNUP
+                  </Button>
+                </Link>
                 <UserButton 
                   afterSignOutUrl="/"
                   appearance={{
@@ -160,14 +189,6 @@ const Navigation = () => {
                   </motion.div>
                 ))}
                 <div className="mt-8 space-y-4">
-                  {/* TODO: Uncomment when brand role auth is set up
-                  <Link to="/brand-dashboard" onClick={() => setIsMobileMenuOpen(false)}>
-                    <Button variant="ghost" className="w-full text-primary hover:bg-primary/10 font-semibold mb-2">
-                      <Building2 size={16} className="mr-2" />
-                      BRAND PORTAL
-                    </Button>
-                  </Link>
-                  */}
                   <SignedOut>
                     <SignInButton mode="modal">
                       <Button variant="ghost" className="w-full text-foreground hover:text-primary font-semibold">
@@ -186,6 +207,22 @@ const Navigation = () => {
                         }}
                       />
                     </div>
+                    {isAdmin && (
+                      <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)}>
+                        <Button variant="ghost" className="w-full text-primary hover:bg-primary/10 font-semibold mb-2">
+                          <Shield size={16} className="mr-2" />
+                          ADMIN DASHBOARD
+                        </Button>
+                      </Link>
+                    )}
+                    {/* TODO: Uncomment when brand role auth is set up
+                    <Link to="/brand-dashboard" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Button variant="ghost" className="w-full text-primary hover:bg-primary/10 font-semibold mb-2">
+                        <Building2 size={16} className="mr-2" />
+                        BRAND PORTAL
+                      </Button>
+                    </Link>
+                    */}
                   </SignedIn>
                   <Link to="/athlete-intake" onClick={() => setIsMobileMenuOpen(false)}>
                     <Button variant="outline" className="w-full border-primary text-primary">

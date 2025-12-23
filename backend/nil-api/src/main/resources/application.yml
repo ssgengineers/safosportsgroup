@@ -2,20 +2,18 @@ spring:
   application:
     name: nil-api
 
-  # Default to H2 for easy testing (use 'prod' profile for Postgres)
+  # AWS RDS PostgreSQL Configuration
   datasource:
-    url: jdbc:h2:mem:nil_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
-
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
-      settings:
-        web-allow-others: false
-        trace: false
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:nil_db}
+    username: ${DB_USERNAME:nil_admin}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
 
   # JPA / Hibernate
   jpa:
@@ -25,6 +23,7 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
   # File upload limits
   servlet:
@@ -39,10 +38,10 @@ server:
     include-message: always
     include-binding-errors: always
 
-# Clerk Authentication (configure these for production)
+# Clerk Authentication
 clerk:
-  issuer: https://your-clerk-domain.clerk.accounts.dev
-  jwks-url: https://your-clerk-domain.clerk.accounts.dev/.well-known/jwks.json
+  issuer: ${CLERK_ISSUER:https://usable-kite-59.clerk.accounts.dev}
+  jwks-url: ${CLERK_JWKS_URL:https://usable-kite-59.clerk.accounts.dev/.well-known/jwks.json}
 
 # Actuator endpoints
 management:
@@ -67,28 +66,30 @@ logging:
   level:
     root: INFO
     com.nil: DEBUG
+    org.hibernate.SQL: DEBUG
 
 ---
-# PostgreSQL Profile (use with: -Dspring.profiles.active=postgres)
+# Local Development Profile (H2 for quick testing without RDS)
 spring:
   config:
     activate:
-      on-profile: postgres
+      on-profile: local
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/nil_db
-    username: nil_user
-    password: nil_password
-    driver-class-name: org.postgresql.Driver
+    url: jdbc:h2:mem:nil_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
 
   h2:
     console:
-      enabled: false
+      enabled: true
+      path: /h2-console
 
   jpa:
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+        dialect: org.hibernate.dialect.H2Dialect
 
 ---
 # Production Profile
