@@ -61,15 +61,14 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui/**", "/api-docs/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
                 .requestMatchers("/api/v1/health", "/api/v1/tables").permitAll()
+                .requestMatchers("/api/v1/intake/**").permitAll()
+                .requestMatchers("/api/v1/admin/**").permitAll()
                 
                 // Protected API endpoints - require authentication
                 // Note: Temporarily permitting all for MVP testing
                 // Change to .authenticated() when ready to enforce auth
                 .requestMatchers("/api/v1/athletes/**").permitAll()
                 .requestMatchers("/api/v1/users/**").authenticated()
-                
-                // Admin-only endpoints
-                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 
                 // All other requests require authentication
                 .anyRequest().permitAll()

@@ -19,14 +19,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CheckCircle, ChevronRight, Edit, Send } from "lucide-react";
+import { CheckCircle, ChevronRight, Edit, Send, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { submitBrandIntake } from "@/services/api";
 
 const BrandIntake = () => {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     company: "",
     contactFirstName: "",
@@ -185,14 +187,43 @@ const BrandIntake = () => {
     setShowConfirmation(true);
   };
 
-  const handleFinalSubmit = () => {
-    setShowConfirmation(false);
-    setIsSubmitted(true);
-    toast({
-      title: "Partnership Request Submitted!",
-      description: "Our team will reach out within 24 hours to discuss opportunities.",
-    });
-    window.location.href = "/";
+  const handleFinalSubmit = async () => {
+    setIsSubmitting(true);
+    
+    try {
+      const response = await submitBrandIntake({
+        company: formData.company,
+        contactFirstName: formData.contactFirstName,
+        contactLastName: formData.contactLastName,
+        contactTitle: formData.contactTitle,
+        email: formData.email,
+        phone: formData.phone,
+        website: formData.website,
+        industry: formData.industry,
+        companySize: formData.companySize,
+        budget: formData.budget,
+        description: formData.description,
+        targetAudience: formData.targetAudience,
+        goals: formData.goals,
+        timeline: formData.timeline,
+        athletePreferences: formData.athletePreferences,
+      });
+
+      setShowConfirmation(false);
+      setIsSubmitted(true);
+      toast({
+        title: "Partnership Request Submitted!",
+        description: response.message || "Our team will reach out within 24 hours to discuss opportunities.",
+      });
+    } catch (error) {
+      toast({
+        title: "Submission Failed",
+        description: error instanceof Error ? error.message : "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const goToStep = (targetStep: number) => {
@@ -665,10 +696,20 @@ const BrandIntake = () => {
             </Button>
             <Button
               onClick={handleFinalSubmit}
+              disabled={isSubmitting}
               className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
             >
-              <Send className="mr-2" size={18} />
-              Confirm & Submit
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 animate-spin" size={18} />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2" size={18} />
+                  Confirm & Submit
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Navigation from "@/components/layout/Navigation";
+import { getAthleteIntakeRequests, getBrandIntakeRequests, getIntakeStats, type AthleteIntakeRequestEntity, type BrandIntakeRequestEntity } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -506,13 +507,41 @@ type Brand = typeof brands[0];
 
 const Admin = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedAthleteRequest, setSelectedAthleteRequest] = useState<AthleteRequest | null>(null);
-  const [selectedBrandRequest, setSelectedBrandRequest] = useState<BrandRequest | null>(null);
+  const [selectedAthleteRequest, setSelectedAthleteRequest] = useState<AthleteIntakeRequestEntity | null>(null);
+  const [selectedBrandRequest, setSelectedBrandRequest] = useState<BrandIntakeRequestEntity | null>(null);
   const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
+  
+  // Real data from API
+  const [athleteRequests, setAthleteRequests] = useState<AthleteIntakeRequestEntity[]>([]);
+  const [brandRequests, setBrandRequests] = useState<BrandIntakeRequestEntity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState({ athletes: { pending: 0, total: 0 }, brands: { pending: 0, total: 0 } });
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        const [athletesData, brandsData, statsData] = await Promise.all([
+          getAthleteIntakeRequests(),
+          getBrandIntakeRequests(),
+          getIntakeStats()
+        ]);
+        setAthleteRequests(athletesData.content || []);
+        setBrandRequests(brandsData.content || []);
+        setStats(statsData);
+      } catch (error) {
+        console.error('Failed to fetch intake requests:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    const statusLower = status?.toLowerCase();
+    switch (statusLower) {
       case "approved":
       case "active":
         return "text-green-500 bg-green-500/10";
@@ -527,7 +556,8 @@ const Admin = () => {
   };
 
   const getStatusIcon = (status: string) => {
-    switch (status) {
+    const statusLower = status?.toLowerCase();
+    switch (statusLower) {
       case "approved":
       case "active":
         return <CheckCircle size={14} />;
@@ -552,9 +582,9 @@ const Admin = () => {
     return null;
   };
 
-  const stats = [
-    { label: "Athlete Requests", value: athleteRequests.filter(a => a.status === "pending").length, icon: UserPlus, color: "text-blue-500" },
-    { label: "Brand Requests", value: brandRequests.filter(b => b.status === "pending").length, icon: BriefcaseIcon, color: "text-purple-500" },
+  const dashboardStats = [
+    { label: "Athlete Requests", value: stats.athletes.pending, icon: UserPlus, color: "text-blue-500" },
+    { label: "Brand Requests", value: stats.brands.pending, icon: BriefcaseIcon, color: "text-purple-500" },
     { label: "Total Athletes", value: athletes.length, icon: Users, color: "text-green-500" },
     { label: "Total Brands", value: brands.length, icon: Building2, color: "text-orange-500" },
   ];
@@ -597,7 +627,7 @@ const Admin = () => {
             transition={{ delay: 0.1 }}
             className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8"
           >
-            {stats.map((stat, index) => (
+            {dashboardStats.map((stat, index) => (
               <div key={index} className="bg-card p-6 rounded-xl border border-border">
                 <div className="flex items-center gap-3 mb-2">
                   <stat.icon className={stat.color} size={24} />
@@ -646,14 +676,14 @@ const Admin = () => {
                   <UserPlus size={16} className="mr-2" />
                   Athlete Requests
                   <span className="ml-2 px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-500 text-xs">
-                    {athleteRequests.filter(a => a.status === "pending").length}
+                    {athleteRequests.filter(a => a.status?.toLowerCase() === "pending").length}
                   </span>
                 </TabsTrigger>
                 <TabsTrigger value="brand-requests" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                   <BriefcaseIcon size={16} className="mr-2" />
                   Brand Requests
                   <span className="ml-2 px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-500 text-xs">
-                    {brandRequests.filter(b => b.status === "pending").length}
+                    {brandRequests.filter(b => b.status?.toLowerCase() === "pending").length}
                   </span>
                 </TabsTrigger>
               </TabsList>
@@ -796,7 +826,20 @@ const Admin = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {athleteRequests.map((request) => (
+                        {isLoading ? (
+                          <tr>
+                            <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                              Loading requests...
+                            </td>
+                          </tr>
+                        ) : athleteRequests.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                              No athlete requests found
+                            </td>
+                          </tr>
+                        ) : (
+                          athleteRequests.map((request) => (
                           <tr key={request.id} className="border-t border-border hover:bg-muted/30 transition-colors">
                             <td className="p-4">
                               <div>
@@ -812,7 +855,7 @@ const Admin = () => {
                                 {request.status}
                               </span>
                             </td>
-                            <td className="p-4 text-muted-foreground">{request.submittedAt}</td>
+                            <td className="p-4 text-muted-foreground">{new Date(request.createdAt).toLocaleDateString()}</td>
                             <td className="p-4">
                               <Button size="sm" variant="outline" onClick={() => setSelectedAthleteRequest(request)}>
                                 <Eye size={14} className="mr-1" />
@@ -820,7 +863,8 @@ const Admin = () => {
                               </Button>
                             </td>
                           </tr>
-                        ))}
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -839,11 +883,25 @@ const Admin = () => {
                           <th className="text-left p-4 font-semibold">Industry</th>
                           <th className="text-left p-4 font-semibold">Budget</th>
                           <th className="text-left p-4 font-semibold">Status</th>
+                          <th className="text-left p-4 font-semibold">Submitted</th>
                           <th className="text-left p-4 font-semibold">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {brandRequests.map((request) => (
+                        {isLoading ? (
+                          <tr>
+                            <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                              Loading requests...
+                            </td>
+                          </tr>
+                        ) : brandRequests.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                              No brand requests found
+                            </td>
+                          </tr>
+                        ) : (
+                          brandRequests.map((request) => (
                           <tr key={request.id} className="border-t border-border hover:bg-muted/30 transition-colors">
                             <td className="p-4">
                               <div>
@@ -865,6 +923,7 @@ const Admin = () => {
                                 {request.status}
                               </span>
                             </td>
+                            <td className="p-4 text-muted-foreground">{new Date(request.createdAt).toLocaleDateString()}</td>
                             <td className="p-4">
                               <Button size="sm" variant="outline" onClick={() => setSelectedBrandRequest(request)}>
                                 <Eye size={14} className="mr-1" />
@@ -872,7 +931,8 @@ const Admin = () => {
                               </Button>
                             </td>
                           </tr>
-                        ))}
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1193,7 +1253,9 @@ const Admin = () => {
                 <div><span className="text-muted-foreground">Email:</span> {selectedAthleteRequest.email}</div>
                 <div><span className="text-muted-foreground">Location:</span> {selectedAthleteRequest.location}</div>
                 <div><span className="text-muted-foreground">Position:</span> {selectedAthleteRequest.position}</div>
-                <div><span className="text-muted-foreground">Social:</span> {selectedAthleteRequest.primarySocial.handle}</div>
+                <div><span className="text-muted-foreground">Social:</span> {selectedAthleteRequest.primarySocialPlatform} - {selectedAthleteRequest.primarySocialHandle}</div>
+                <div><span className="text-muted-foreground">Date of Birth:</span> {selectedAthleteRequest.dateOfBirth}</div>
+                <div><span className="text-muted-foreground">Submitted:</span> {new Date(selectedAthleteRequest.createdAt).toLocaleString()}</div>
               </div>
               <div className="p-4 bg-muted rounded-lg">
                 <h4 className="font-semibold mb-2">Bio</h4>
@@ -1203,7 +1265,7 @@ const Admin = () => {
                 <h4 className="font-semibold mb-2">Goals</h4>
                 <p className="text-sm">{selectedAthleteRequest.goals}</p>
               </div>
-              {selectedAthleteRequest.status === "pending" && (
+              {selectedAthleteRequest.status?.toLowerCase() === "pending" && (
                 <div className="flex gap-3">
                   <Button className="flex-1 bg-green-600 hover:bg-green-700">
                     <CheckCircle size={16} className="mr-2" /> Approve
@@ -1240,17 +1302,30 @@ const Admin = () => {
                 <div><span className="text-muted-foreground">Contact:</span> {selectedBrandRequest.contactFirstName} {selectedBrandRequest.contactLastName}</div>
                 <div><span className="text-muted-foreground">Title:</span> {selectedBrandRequest.contactTitle}</div>
                 <div><span className="text-muted-foreground">Email:</span> {selectedBrandRequest.email}</div>
+                <div><span className="text-muted-foreground">Phone:</span> {selectedBrandRequest.phone}</div>
+                <div><span className="text-muted-foreground">Website:</span> <a href={selectedBrandRequest.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{selectedBrandRequest.website}</a></div>
                 <div><span className="text-muted-foreground">Budget:</span> <span className="text-primary font-semibold">{selectedBrandRequest.budget}</span></div>
+                <div><span className="text-muted-foreground">Company Size:</span> {selectedBrandRequest.companySize}</div>
+                <div><span className="text-muted-foreground">Timeline:</span> {selectedBrandRequest.timeline}</div>
+                <div><span className="text-muted-foreground">Submitted:</span> {new Date(selectedBrandRequest.createdAt).toLocaleString()}</div>
               </div>
               <div className="p-4 bg-muted rounded-lg">
                 <h4 className="font-semibold mb-2">Description</h4>
                 <p className="text-sm">{selectedBrandRequest.description}</p>
               </div>
               <div className="p-4 bg-muted rounded-lg">
+                <h4 className="font-semibold mb-2">Goals</h4>
+                <p className="text-sm">{selectedBrandRequest.goals}</p>
+              </div>
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="font-semibold mb-2">Target Audience</h4>
+                <p className="text-sm">{selectedBrandRequest.targetAudience}</p>
+              </div>
+              <div className="p-4 bg-muted rounded-lg">
                 <h4 className="font-semibold mb-2">Athlete Preferences</h4>
                 <p className="text-sm">{selectedBrandRequest.athletePreferences}</p>
               </div>
-              {selectedBrandRequest.status === "pending" && (
+              {selectedBrandRequest.status?.toLowerCase() === "pending" && (
                 <div className="flex gap-3">
                   <Button className="flex-1 bg-green-600 hover:bg-green-700">
                     <CheckCircle size={16} className="mr-2" /> Approve

@@ -25,6 +25,21 @@ public class HealthController {
     @Autowired
     private DataSource dataSource;
 
+    @GetMapping
+    public ResponseEntity<Map<String, Object>> root() {
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "UP");
+        response.put("message", "NIL Platform API");
+        response.put("version", "1.0.0");
+        response.put("endpoints", Map.of(
+            "health", "/api/v1/health",
+            "intake", "/api/v1/intake",
+            "athletes", "/api/v1/athletes",
+            "swagger", "/swagger-ui.html"
+        ));
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> health() {
         Map<String, Object> response = new HashMap<>();

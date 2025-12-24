@@ -19,8 +19,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CheckCircle, ChevronRight, Plus, X, Edit, Send } from "lucide-react";
+import { CheckCircle, ChevronRight, Plus, X, Edit, Send, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { submitAthleteIntake } from "@/services/api";
 
 interface SocialAccount {
   platform: string;
@@ -32,6 +33,7 @@ const AthleteIntake = () => {
   const [step, setStep] = useState(1);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -158,15 +160,40 @@ const AthleteIntake = () => {
     setShowConfirmation(true);
   };
 
-  const handleFinalSubmit = () => {
-    setShowConfirmation(false);
-    setIsSubmitted(true);
-    toast({
-      title: "Application Submitted!",
-      description: "We'll review your profile and be in touch within 48 hours.",
-    });
+  const handleFinalSubmit = async () => {
+    setIsSubmitting(true);
     
-    window.location.href = "/";
+    try {
+      const response = await submitAthleteIntake({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        dateOfBirth: formData.dateOfBirth,
+        location: formData.location,
+        school: formData.school,
+        sport: formData.sport,
+        position: formData.position,
+        primarySocial: primarySocial,
+        additionalSocials: additionalSocials,
+        bio: formData.bio,
+        goals: formData.goals,
+      });
+
+      setShowConfirmation(false);
+      setIsSubmitted(true);
+      toast({
+        title: "Application Submitted!",
+        description: response.message || "We'll review your profile and be in touch within 48 hours.",
+      });
+    } catch (error) {
+      toast({
+        title: "Submission Failed",
+        description: error instanceof Error ? error.message : "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const goToStep = (targetStep: number) => {
@@ -632,10 +659,20 @@ const AthleteIntake = () => {
             </Button>
             <Button
               onClick={handleFinalSubmit}
+              disabled={isSubmitting}
               className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
             >
-              <Send className="mr-2" size={18} />
-              Confirm & Submit
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 animate-spin" size={18} />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2" size={18} />
+                  Confirm & Submit
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
