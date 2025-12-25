@@ -2,6 +2,7 @@
 import * as cdk from 'aws-cdk-lib';
 import { VpcStack } from '../lib/vpc-stack';
 import { RdsStack } from '../lib/rds-stack';
+import { EcrStack } from '../lib/ecr-stack';
 
 const app = new cdk.App();
 
@@ -19,4 +20,9 @@ const vpcStack = new VpcStack(app, 'SSGVpcStack', {
 new RdsStack(app, 'SSGRdsStack', {
   env,
   vpcStack,
+});
+
+// Phase 4: ECR Stack (container registry)
+new EcrStack(app, 'SSGEcrStack', {
+  env,
 });
