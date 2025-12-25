@@ -6,7 +6,7 @@
 **Endpoint:** `ssgrdsstack-databaseb269d8bb-kskuapfdvihs.chae2y8a6x43.us-east-2.rds.amazonaws.com`  
 **Database:** `nil_db`  
 **Username:** `nil_admin`  
-**Password:** `|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a`
+**Password:** Get from AWS Secrets Manager (see below)
 
 ## Option 1: Using AWS RDS Query Editor (Easiest)
 
@@ -18,7 +18,13 @@
 2. **Connect to Database:**
    - Database: `nil_db`
    - Username: `nil_admin`
-   - Password: `|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a`
+   - Password: Get from AWS Secrets Manager:
+     ```bash
+     aws secretsmanager get-secret-value \
+       --secret-id <SECRET_ARN> \
+       --query SecretString \
+       --output text | jq -r .password
+     ```
    - Click "Connect to database"
 
 3. **Query Your Tables:**
@@ -57,7 +63,7 @@
    - Port: `5432`
    - Database: `nil_db`
    - Username: `nil_admin`
-   - Password: `|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a`
+   - Password: Get from AWS Secrets Manager (see connection section above)
 
 2. **Connect and Query:**
    - Use the same SQL queries as above
@@ -71,11 +77,21 @@ psql -h ssgrdsstack-databaseb269d8bb-kskuapfdvihs.chae2y8a6x43.us-east-2.rds.ama
      -d nil_db
 ```
 
-Then enter your password when prompted: `|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a`
+Then enter your password when prompted (get from Secrets Manager).
 
 **Or use PGPASSWORD environment variable:**
 ```bash
-export PGPASSWORD="|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a"
+# Get password from Secrets Manager
+SECRET_ARN=$(aws cloudformation describe-stacks \
+  --stack-name SSGRdsStack \
+  --query "Stacks[0].Outputs[?OutputKey=='DatabaseSecretArn'].OutputValue" \
+  --output text \
+  --region us-east-2)
+
+export PGPASSWORD=$(aws secretsmanager get-secret-value \
+  --secret-id "$SECRET_ARN" \
+  --query SecretString \
+  --output text | jq -r .password)
 psql -h ssgrdsstack-databaseb269d8bb-kskuapfdvihs.chae2y8a6x43.us-east-2.rds.amazonaws.com \
      -p 5432 \
      -U nil_admin \

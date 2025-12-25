@@ -8,7 +8,17 @@ DB_HOST="ssgrdsstack-databaseb269d8bb-kskuapfdvihs.chae2y8a6x43.us-east-2.rds.am
 DB_PORT="5432"
 DB_NAME="nil_db"
 DB_USERNAME="nil_admin"
-DB_PASSWORD='|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a'
+# Get password from Secrets Manager
+SECRET_ARN=$(aws cloudformation describe-stacks \
+  --stack-name SSGRdsStack \
+  --query "Stacks[0].Outputs[?OutputKey=='DatabaseSecretArn'].OutputValue" \
+  --output text \
+  --region us-east-2)
+
+DB_PASSWORD=$(aws secretsmanager get-secret-value \
+  --secret-id "$SECRET_ARN" \
+  --query SecretString \
+  --output text | jq -r .password)
 
 echo "Testing connection to new RDS database..."
 echo "Host: $DB_HOST"
@@ -40,7 +50,7 @@ echo ""
 # Test with psql if available
 if command -v psql &> /dev/null; then
   echo "3. Testing connection with psql..."
-  export PGPASSWORD='|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a'
+  export PGPASSWORD="$DB_PASSWORD"
   if psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_NAME" -c "SELECT version();" &> /dev/null; then
     echo "✅ Connection successful!"
     psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_NAME" -c "SELECT version();"

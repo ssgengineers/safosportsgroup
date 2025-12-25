@@ -8,7 +8,15 @@ export DB_HOST=ssgrdsstack-databaseb269d8bb-kskuapfdvihs.chae2y8a6x43.us-east-2.
 export DB_PORT=5432
 export DB_NAME=nil_db
 export DB_USERNAME=nil_admin
-export DB_PASSWORD="|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a"
+export DB_PASSWORD="<GET_FROM_SECRETS_MANAGER>"
+```
+
+**Get password from Secrets Manager:**
+```bash
+aws secretsmanager get-secret-value \
+  --secret-id <SECRET_ARN> \
+  --query SecretString \
+  --output text | jq -r .password
 ```
 
 ## Clerk Authentication
