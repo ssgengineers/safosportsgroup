@@ -3,6 +3,7 @@ import * as cdk from 'aws-cdk-lib';
 import { VpcStack } from '../lib/vpc-stack';
 import { RdsStack } from '../lib/rds-stack';
 import { EcrStack } from '../lib/ecr-stack';
+import { EcsStack } from '../lib/ecs-stack';
 
 const app = new cdk.App();
 
@@ -17,12 +18,20 @@ const vpcStack = new VpcStack(app, 'SSGVpcStack', {
 });
 
 // Phase 3: RDS Stack (depends on VPC Stack)
-new RdsStack(app, 'SSGRdsStack', {
+const rdsStack = new RdsStack(app, 'SSGRdsStack', {
   env,
   vpcStack,
 });
 
 // Phase 4: ECR Stack (container registry)
-new EcrStack(app, 'SSGEcrStack', {
+const ecrStack = new EcrStack(app, 'SSGEcrStack', {
   env,
+});
+
+// Phase 5: ECS Stack (depends on VPC, RDS, and ECR stacks)
+new EcsStack(app, 'SSGEcsStack', {
+  env,
+  vpcStack,
+  rdsStack,
+  ecrStack,
 });

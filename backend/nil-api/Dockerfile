@@ -4,33 +4,34 @@ FROM maven:3.9-eclipse-temurin-17 AS build
 
 WORKDIR /app
 
-# Copy Maven wrapper and pom.xml first (for better caching)
-COPY .mvn/ .mvn
-COPY mvnw pom.xml ./
-RUN chmod +x ./mvnw
+# Copy pom.xml first (for better caching)
+COPY pom.xml ./
 
 # Download dependencies (cached if pom.xml doesn't change)
-RUN ./mvnw dependency:go-offline -B
+RUN mvn dependency:go-offline -B || true
 
 # Copy source code
 COPY src ./src
 
 # Build the application
-RUN ./mvnw clean package -DskipTests -B
+RUN mvn clean package -DskipTests -B
 
 # Stage 2: Runtime
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre-jammy
 
 WORKDIR /app
 
 # Create non-root user for security
-RUN addgroup -S spring && adduser -S spring -G spring
+RUN groupadd -r spring && useradd -r -g spring spring
 
 # Copy the built JAR from build stage
 COPY --from=build /app/target/*.jar app.jar
 
 # Change ownership to non-root user
 RUN chown spring:spring app.jar
+
+# Install wget for health check
+RUN apt-get update && apt-get install -y wget && rm -rf /var/lib/apt/lists/*
 
 # Switch to non-root user
 USER spring:spring
