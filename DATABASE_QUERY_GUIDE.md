@@ -1,16 +1,24 @@
-# How to Query Your Database in AWS Aurora
+# How to Query Your Database in AWS RDS PostgreSQL
+
+## Current Database (CDK-Managed)
+
+**Instance:** `ssgrdsstack-databaseb269d8bb-kskuapfdvihs`  
+**Endpoint:** `ssgrdsstack-databaseb269d8bb-kskuapfdvihs.chae2y8a6x43.us-east-2.rds.amazonaws.com`  
+**Database:** `nil_db`  
+**Username:** `nil_admin`  
+**Password:** `|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a`
 
 ## Option 1: Using AWS RDS Query Editor (Easiest)
 
 1. **Navigate to RDS Query Editor:**
    - Go to AWS Console → RDS → Databases
-   - Select your database: `nil-database`
+   - Select your database: `ssgrdsstack-databaseb269d8bb-kskuapfdvihs`
    - Click on the **"Query Editor"** tab (or use the left navigation)
 
 2. **Connect to Database:**
-   - Database: `postgres`
+   - Database: `nil_db`
    - Username: `nil_admin`
-   - Password: `Ssg.engineersnil101!`
+   - Password: `|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a`
    - Click "Connect to database"
 
 3. **Query Your Tables:**
@@ -45,11 +53,11 @@
 ## Option 2: Using pgAdmin or DBeaver (Desktop Tools)
 
 1. **Connection Details:**
-   - Host: `nil-database.chae2y8a6x43.us-east-2.rds.amazonaws.com`
+   - Host: `ssgrdsstack-databaseb269d8bb-kskuapfdvihs.chae2y8a6x43.us-east-2.rds.amazonaws.com`
    - Port: `5432`
-   - Database: `postgres`
+   - Database: `nil_db`
    - Username: `nil_admin`
-   - Password: `Ssg.engineersnil101!`
+   - Password: `|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a`
 
 2. **Connect and Query:**
    - Use the same SQL queries as above
@@ -57,13 +65,22 @@
 ## Option 3: Using psql (Command Line)
 
 ```bash
-psql -h nil-database.chae2y8a6x43.us-east-2.rds.amazonaws.com \
+psql -h ssgrdsstack-databaseb269d8bb-kskuapfdvihs.chae2y8a6x43.us-east-2.rds.amazonaws.com \
      -p 5432 \
      -U nil_admin \
-     -d postgres
+     -d nil_db
 ```
 
-Then enter your password when prompted.
+Then enter your password when prompted: `|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a`
+
+**Or use PGPASSWORD environment variable:**
+```bash
+export PGPASSWORD="|8z7:ByM*H:k$Xa]mFq2S3y&+$(_Zy%a"
+psql -h ssgrdsstack-databaseb269d8bb-kskuapfdvihs.chae2y8a6x43.us-east-2.rds.amazonaws.com \
+     -p 5432 \
+     -U nil_admin \
+     -d nil_db
+```
 
 ## Common Queries
 
