@@ -40,10 +40,10 @@ aws ecr get-login-password --region ${REGION} | \
 echo "   ✅ Logged in"
 echo ""
 
-# Build the image
-echo "3. Building Docker image..."
+# Build the image for AMD64 (ECS Fargate architecture)
+echo "3. Building Docker image for linux/amd64..."
 cd ../../backend/nil-api
-docker build -t ssg-spring-boot-api:${TAG} .
+docker build --platform linux/amd64 -t ssg-spring-boot-api:${TAG} .
 
 echo "   ✅ Image built"
 echo ""

@@ -100,7 +100,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update  # Changed from 'validate' - Hibernate will create tables if missing
     show-sql: false
 
 logging:
