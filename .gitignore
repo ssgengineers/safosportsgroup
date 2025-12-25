@@ -29,4 +29,9 @@ infrastructure/RDS_CONNECTION_INFO.md
 infrastructure/ENV_VARIABLES.md
 backend/nil-api/run-with-new-db.sh
 DATABASE_QUERY_GUIDE.md
-infrastructure/scripts/*.sh
+
+# Scripts with hardcoded passwords (exclude specific ones)
+infrastructure/scripts/setup-env.sh
+infrastructure/scripts/test-db-connection.sh
+infrastructure/scripts/migrate-rds.sh
+infrastructure/scripts/delete-old-db.sh
