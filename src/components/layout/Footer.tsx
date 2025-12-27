@@ -67,7 +67,7 @@ export const Footer = () => {
               SSG
             </h3>
             <p className="text-muted-foreground leading-relaxed mb-6">
-              Student Sponsor Gateway connects college athletes with brands through AI-powered matching.
+              Safo Sports Group connects college athletes with brands through AI-powered matching.
             </p>
             <div className="flex gap-4">
               {socialLinks.map((social) => (
@@ -118,7 +118,7 @@ export const Footer = () => {
           className="pt-8 border-t border-border flex flex-col md:flex-row justify-between items-center gap-4"
         >
           <p className="text-muted-foreground text-sm">
-            &copy; {new Date().getFullYear()} Student Sponsor Gateway. All rights reserved.
+            &copy; {new Date().getFullYear()} Safo Sports Group. All rights reserved.
           </p>
           <div className="flex gap-6 text-sm text-muted-foreground">
             <Link to="/privacy" className="hover:text-primary transition-colors">
