@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # OpenAI (for future AI features)
     openai_api_key: str = ""
     
+    # Anthropic Claude API
+    anthropic_api_key: str = ""
+    claude_model: str = "claude-3-5-sonnet-20241022"
+    claude_max_tokens: int = 2000
+    
     # Clerk (for JWT validation if needed)
     clerk_issuer: str = ""
     clerk_jwks_url: str = ""

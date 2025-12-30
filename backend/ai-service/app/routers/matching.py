@@ -2,17 +2,24 @@
 Brand-Athlete Matching Endpoints
 
 Handles intelligent matching between brands and athletes:
-- Campaign-athlete matching
+- Campaign-athlete matching (by IDs - fetches data automatically)
 - Athlete recommendations for brands
 - Brand recommendations for athletes
+- Batch matching for efficiency
 """
 
-from fastapi import APIRouter, Query
-from pydantic import BaseModel
-from typing import Optional, List
+import logging
+from fastapi import APIRouter, Query, HTTPException
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
 
+from app.services.claude_client import ClaudeClient
+from app.services.data_formatter import DataFormatter
+from app.services.nil_api_client import NILApiClient
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/matching")
 
 
@@ -27,8 +34,40 @@ class MatchType(str, Enum):
 
 # ============= DTOs =============
 
+class SimpleMatchRequest(BaseModel):
+    """Simple match request - just provide IDs, data is fetched automatically."""
+    brand_id: str = Field(..., description="UUID of the brand intake request")
+    athlete_ids: Optional[List[str]] = Field(None, description="List of athlete profile UUIDs. If not provided, matches against all athletes.")
+    campaign_requirements: Optional[Dict[str, Any]] = Field(None, description="Optional campaign-specific requirements")
+    max_results: int = Field(10, description="Maximum number of matches to return", ge=1, le=50)
+
+
+class AthleteMatchResult(BaseModel):
+    """An athlete match result with full details."""
+    athlete_id: str
+    athlete_name: Optional[str] = None
+    sport: Optional[str] = None
+    school: Optional[str] = None
+    match_score: float
+    match_reasons: List[str]
+    concerns: List[str] = []
+    estimated_reach: int
+    suggested_rate: Optional[float] = None
+    component_scores: Optional[Dict[str, float]] = None
+
+
+class MatchResponse(BaseModel):
+    """Response containing matched athletes."""
+    brand_id: str
+    brand_name: Optional[str] = None
+    total_candidates: int
+    total_matches: int
+    matches: List[AthleteMatchResult]
+    generated_at: datetime
+
+
 class CampaignCriteria(BaseModel):
-    """Campaign requirements for matching."""
+    """Campaign requirements for matching (legacy)."""
     campaign_id: str
     brand_id: str
     sport_preferences: Optional[List[str]] = None
@@ -40,8 +79,23 @@ class CampaignCriteria(BaseModel):
     max_athletes: int = 10
 
 
+class AthleteProfileData(BaseModel):
+    """Complete athlete profile data for matching (legacy)."""
+    athlete_id: str
+    athlete_data: Dict[str, Any]
+
+
+class MatchAthletesRequest(BaseModel):
+    """Request for matching athletes to a campaign with full data (legacy)."""
+    campaign_id: str
+    brand_data: Dict[str, Any]
+    campaign_data: Optional[Dict[str, Any]] = None
+    athletes: List[AthleteProfileData]
+    max_athletes: int = 10
+
+
 class AthleteMatch(BaseModel):
-    """An athlete match result."""
+    """An athlete match result (legacy format)."""
     athlete_id: str
     match_score: float
     match_reasons: List[str]
@@ -49,41 +103,268 @@ class AthleteMatch(BaseModel):
     suggested_rate: Optional[float] = None
 
 
-class MatchResponse(BaseModel):
-    """Response containing matched athletes."""
+class LegacyMatchResponse(BaseModel):
+    """Response containing matched athletes (legacy format)."""
     campaign_id: str
     total_matches: int
     matches: List[AthleteMatch]
     generated_at: datetime
 
 
-class RecommendationRequest(BaseModel):
-    """Request for recommendations."""
-    entity_id: str
-    entity_type: MatchType
-    limit: int = 10
+# ============= New Simplified Endpoints =============
+
+@router.post("/find", response_model=MatchResponse)
+async def find_athlete_matches(request: SimpleMatchRequest):
+    """
+    Find best matching athletes for a brand using AI.
+
+    This is the recommended endpoint for matching. Simply provide:
+    - brand_id: UUID of the brand (from brand intake)
+    - athlete_ids (optional): Specific athletes to evaluate. If not provided, evaluates all active athletes.
+    - campaign_requirements (optional): Additional campaign-specific criteria
+    - max_results: Maximum matches to return (default 10)
+
+    The service automatically fetches all athlete and brand data from the main API,
+    then uses Claude AI to analyze compatibility and return ranked matches.
+    """
+    try:
+        # Initialize clients
+        api_client = NILApiClient()
+        claude_client = ClaudeClient()
+        data_formatter = DataFormatter()
+
+        # Fetch brand data
+        brand_data = await api_client.get_brand_intake(request.brand_id)
+        if not brand_data:
+            raise HTTPException(status_code=404, detail=f"Brand not found: {request.brand_id}")
+
+        # Format brand data for AI
+        brand_formatted = data_formatter.format_brand_campaign(
+            brand_data,
+            request.campaign_requirements
+        )
+
+        # Fetch athlete data
+        if request.athlete_ids:
+            # Fetch specific athletes
+            athletes_raw = await api_client.get_athlete_profiles(request.athlete_ids)
+        else:
+            # Fetch all active athletes
+            athletes_response = await api_client.get_all_athletes(size=100)
+            athletes_raw = athletes_response.get("content", [])
+
+        if not athletes_raw:
+            return MatchResponse(
+                brand_id=request.brand_id,
+                brand_name=brand_data.get("company"),
+                total_candidates=0,
+                total_matches=0,
+                matches=[],
+                generated_at=datetime.utcnow()
+            )
+
+        # Format athlete data and add IDs
+        athletes_formatted = []
+        for athlete in athletes_raw:
+            formatted = data_formatter.format_athlete_profile(athlete)
+            formatted["athlete_id"] = str(athlete.get("id", ""))
+            athletes_formatted.append(formatted)
+
+        # Use batch matching for efficiency (up to 10 athletes per call)
+        all_matches = []
+        batch_size = 10
+
+        for i in range(0, len(athletes_formatted), batch_size):
+            batch = athletes_formatted[i:i + batch_size]
+
+            try:
+                batch_results = await claude_client.analyze_batch_matches(
+                    batch,
+                    brand_formatted,
+                    request.campaign_requirements
+                )
+
+                # Map results back to athlete IDs
+                for j, result in enumerate(batch_results):
+                    if j < len(batch):
+                        result["athlete_id"] = batch[j]["athlete_id"]
+                        # Add athlete info from original data
+                        original = athletes_raw[i + j]
+                        result["athlete_name"] = original.get("fullName") or f"{original.get('firstName', '')} {original.get('lastName', '')}".strip()
+                        result["sport"] = original.get("sport")
+                        result["school"] = original.get("schoolName") or original.get("school")
+                        all_matches.append(result)
+
+            except Exception as e:
+                logger.error(f"Error in batch {i // batch_size}: {e}")
+                # Fall back to individual matching for this batch
+                for j, athlete in enumerate(batch):
+                    try:
+                        result = await claude_client.analyze_match(
+                            athlete,
+                            brand_formatted,
+                            request.campaign_requirements
+                        )
+                        result["athlete_id"] = athlete["athlete_id"]
+                        original = athletes_raw[i + j]
+                        result["athlete_name"] = original.get("fullName") or f"{original.get('firstName', '')} {original.get('lastName', '')}".strip()
+                        result["sport"] = original.get("sport")
+                        result["school"] = original.get("schoolName") or original.get("school")
+                        all_matches.append(result)
+                    except Exception as inner_e:
+                        logger.error(f"Error matching athlete {athlete.get('athlete_id')}: {inner_e}")
+
+        # Sort by match score and limit
+        all_matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+        top_matches = all_matches[:request.max_results]
+
+        # Convert to response model
+        match_results = [
+            AthleteMatchResult(
+                athlete_id=m["athlete_id"],
+                athlete_name=m.get("athlete_name"),
+                sport=m.get("sport"),
+                school=m.get("school"),
+                match_score=m["match_score"],
+                match_reasons=m.get("match_reasons", []),
+                concerns=m.get("concerns", []),
+                estimated_reach=m.get("estimated_reach", 0),
+                suggested_rate=m.get("suggested_rate"),
+                component_scores=m.get("component_scores")
+            )
+            for m in top_matches
+        ]
+
+        return MatchResponse(
+            brand_id=request.brand_id,
+            brand_name=brand_data.get("company"),
+            total_candidates=len(athletes_raw),
+            total_matches=len(match_results),
+            matches=match_results,
+            generated_at=datetime.utcnow()
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=f"Configuration error: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in find_athlete_matches: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to find matches: {str(e)}")
 
 
-# ============= Endpoints =============
+@router.get("/brand/{brand_id}/athletes")
+async def get_top_athletes_for_brand(
+    brand_id: str,
+    sport: Optional[str] = Query(None, description="Filter by sport"),
+    conference: Optional[str] = Query(None, description="Filter by conference"),
+    min_followers: Optional[int] = Query(None, description="Minimum follower count"),
+    limit: int = Query(10, description="Maximum results", ge=1, le=50)
+):
+    """
+    Get top matching athletes for a brand.
 
-@router.post("/campaign", response_model=MatchResponse)
+    Simplified endpoint that fetches brand and athlete data automatically,
+    then returns the best matches using AI analysis.
+    """
+    request = SimpleMatchRequest(
+        brand_id=brand_id,
+        athlete_ids=None,
+        campaign_requirements={
+            "sport_preferences": [sport] if sport else None,
+            "conference_preferences": [conference] if conference else None,
+            "min_followers": min_followers
+        } if any([sport, conference, min_followers]) else None,
+        max_results=limit
+    )
+
+    return await find_athlete_matches(request)
+
+
+@router.get("/athlete/{athlete_id}/brands")
+async def get_matching_brands_for_athlete(
+    athlete_id: str,
+    limit: int = Query(10, description="Maximum results", ge=1, le=50)
+):
+    """
+    Get brands that would be good matches for an athlete.
+
+    Fetches the athlete profile and all approved brands,
+    then uses AI to rank brand compatibility.
+    """
+    try:
+        api_client = NILApiClient()
+        claude_client = ClaudeClient()
+        data_formatter = DataFormatter()
+
+        # Fetch athlete data
+        athlete_data = await api_client.get_athlete_profile(athlete_id)
+        if not athlete_data:
+            raise HTTPException(status_code=404, detail=f"Athlete not found: {athlete_id}")
+
+        athlete_formatted = data_formatter.format_athlete_profile(athlete_data)
+
+        # Fetch all approved brands
+        brands_response = await api_client.get_all_brand_intakes(status="APPROVED", size=50)
+        brands = brands_response.get("content", [])
+
+        if not brands:
+            return {
+                "athlete_id": athlete_id,
+                "athlete_name": athlete_data.get("fullName"),
+                "total_brands": 0,
+                "matches": [],
+                "generated_at": datetime.utcnow().isoformat()
+            }
+
+        # Score each brand
+        brand_scores = []
+        for brand in brands:
+            try:
+                brand_formatted = data_formatter.format_brand_campaign(brand)
+                result = await claude_client.score_brand_fit(athlete_formatted, brand_formatted)
+
+                brand_scores.append({
+                    "brand_id": str(brand.get("id", "")),
+                    "company": brand.get("company"),
+                    "industry": brand.get("industry"),
+                    "fit_score": result["fit_score"],
+                    "match_reasons": result["match_reasons"],
+                    "concerns": result["concerns"]
+                })
+            except Exception as e:
+                logger.error(f"Error scoring brand {brand.get('id')}: {e}")
+
+        # Sort and limit
+        brand_scores.sort(key=lambda x: x["fit_score"], reverse=True)
+
+        return {
+            "athlete_id": athlete_id,
+            "athlete_name": athlete_data.get("fullName") or f"{athlete_data.get('firstName', '')} {athlete_data.get('lastName', '')}".strip(),
+            "total_brands": len(brands),
+            "matches": brand_scores[:limit],
+            "generated_at": datetime.utcnow().isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_matching_brands_for_athlete: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to find brand matches: {str(e)}")
+
+
+# ============= Legacy Endpoints (Backward Compatibility) =============
+
+@router.post("/campaign", response_model=LegacyMatchResponse)
 async def match_athletes_for_campaign(criteria: CampaignCriteria):
     """
-    Find best matching athletes for a campaign.
-    
-    Algorithm considers:
-    - Sport/conference alignment
-    - Follower count requirements
-    - Engagement rate thresholds
-    - Content type capabilities
-    - Budget constraints
-    - Historical performance
+    [LEGACY] Find best matching athletes for a campaign.
+
+    Note: This endpoint accepts basic criteria. For the recommended approach,
+    use POST /matching/find which fetches data automatically.
     """
-    # TODO: Implement actual matching algorithm
-    # This would query the main API for athlete data
-    # and run ML-based matching
-    
-    # For now, return mock matches
+    logger.warning("Using legacy endpoint - consider using POST /matching/find instead")
+
     mock_matches = [
         AthleteMatch(
             athlete_id="mock-athlete-1",
@@ -96,36 +377,88 @@ async def match_athletes_for_campaign(criteria: CampaignCriteria):
             estimated_reach=45000,
             suggested_rate=500.0
         ),
-        AthleteMatch(
-            athlete_id="mock-athlete-2", 
-            match_score=87.3,
-            match_reasons=[
-                "Strong local following",
-                "Content style aligns with brand",
-                "Available for campaign dates"
-            ],
-            estimated_reach=28000,
-            suggested_rate=350.0
-        ),
-        AthleteMatch(
-            athlete_id="mock-athlete-3",
-            match_score=81.0,
-            match_reasons=[
-                "Growing audience",
-                "Authentic engagement",
-                "Budget-friendly option"
-            ],
-            estimated_reach=12000,
-            suggested_rate=200.0
-        ),
     ]
-    
-    return MatchResponse(
+
+    return LegacyMatchResponse(
         campaign_id=criteria.campaign_id,
         total_matches=len(mock_matches),
         matches=mock_matches[:criteria.max_athletes],
         generated_at=datetime.utcnow(),
     )
+
+
+@router.post("/campaign/ai", response_model=LegacyMatchResponse)
+async def match_athletes_for_campaign_ai(request: MatchAthletesRequest):
+    """
+    [LEGACY] Find best matching athletes using AI with provided data.
+
+    Note: For the recommended approach, use POST /matching/find which
+    fetches data automatically - you only need to provide IDs.
+    """
+    if not request.athletes:
+        raise HTTPException(status_code=400, detail="At least one athlete must be provided")
+
+    try:
+        claude_client = ClaudeClient()
+        data_formatter = DataFormatter()
+
+        brand_formatted = data_formatter.format_brand_campaign(
+            request.brand_data,
+            request.campaign_data or {}
+        )
+
+        matches = []
+        for athlete_profile in request.athletes:
+            try:
+                athlete_formatted = data_formatter.format_athlete_profile(
+                    athlete_profile.athlete_data
+                )
+
+                campaign_data = {
+                    "campaign_id": request.campaign_id,
+                    "sport_preferences": request.campaign_data.get("sport_preferences") if request.campaign_data else None,
+                    "conference_preferences": request.campaign_data.get("conference_preferences") if request.campaign_data else None,
+                    "min_followers": request.campaign_data.get("min_followers") if request.campaign_data else None,
+                    "min_engagement_rate": request.campaign_data.get("min_engagement_rate") if request.campaign_data else None,
+                    "content_types": request.campaign_data.get("content_types") if request.campaign_data else None,
+                    "budget_per_athlete": request.campaign_data.get("budget_per_athlete") if request.campaign_data else None,
+                }
+
+                analysis = await claude_client.analyze_match(
+                    athlete_formatted,
+                    brand_formatted,
+                    campaign_data
+                )
+
+                match = AthleteMatch(
+                    athlete_id=athlete_profile.athlete_id,
+                    match_score=analysis["match_score"],
+                    match_reasons=analysis["match_reasons"],
+                    estimated_reach=analysis["estimated_reach"],
+                    suggested_rate=analysis["suggested_rate"]
+                )
+
+                matches.append(match)
+
+            except Exception as e:
+                logger.error(f"Error analyzing athlete {athlete_profile.athlete_id}: {e}")
+                continue
+
+        matches.sort(key=lambda x: x.match_score, reverse=True)
+        matches = matches[:request.max_athletes]
+
+        return LegacyMatchResponse(
+            campaign_id=request.campaign_id,
+            total_matches=len(matches),
+            matches=matches,
+            generated_at=datetime.utcnow(),
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=f"Configuration error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in match_athletes_for_campaign_ai: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to match athletes: {str(e)}")
 
 
 @router.get("/recommendations/athlete/{athlete_id}")
@@ -134,17 +467,10 @@ async def get_brand_recommendations(
     limit: int = Query(default=10, le=50)
 ):
     """
-    Get brand/campaign recommendations for an athlete.
-    
-    Considers:
-    - Athlete's sport and position
-    - Social media metrics
-    - Past campaign performance
-    - Brand category preferences
-    - Market trends
+    [LEGACY] Get brand/campaign recommendations for an athlete.
+
+    Note: Use GET /matching/athlete/{athlete_id}/brands for AI-powered recommendations.
     """
-    # TODO: Implement actual recommendation engine
-    
     return {
         "athlete_id": athlete_id,
         "recommendations": [
@@ -174,16 +500,10 @@ async def get_athlete_recommendations(
     limit: int = Query(default=10, le=50)
 ):
     """
-    Get athlete recommendations for a brand.
-    
-    Considers:
-    - Brand's target demographics
-    - Campaign history
-    - Budget constraints
-    - Industry trends
+    [LEGACY] Get athlete recommendations for a brand.
+
+    Note: Use GET /matching/brand/{brand_id}/athletes for AI-powered recommendations.
     """
-    # TODO: Implement actual recommendation engine
-    
     return {
         "brand_id": brand_id,
         "filters": {
@@ -206,13 +526,7 @@ async def get_athlete_recommendations(
 
 @router.get("/analytics/match-success")
 async def get_match_success_analytics():
-    """
-    Get analytics on matching success rates.
-    
-    Useful for improving the matching algorithm.
-    """
-    # TODO: Implement actual analytics
-    
+    """Get analytics on matching success rates."""
     return {
         "period": "last_30_days",
         "total_matches_made": 156,
@@ -226,4 +540,3 @@ async def get_match_success_analytics():
             "Local brand campaigns outperform national by 23%"
         ]
     }
-

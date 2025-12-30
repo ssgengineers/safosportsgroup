@@ -8,11 +8,17 @@ Handles advanced scoring and ranking of athlete profiles:
 - NIL readiness assessment
 """
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import Optional, List
+import logging
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
+from app.services.claude_client import ClaudeClient
+from app.services.data_formatter import DataFormatter
+from app.services.nil_api_client import NILApiClient
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/scoring")
 
 
@@ -28,7 +34,7 @@ class SocialMetrics(BaseModel):
 
 
 class AthleteScoreRequest(BaseModel):
-    """Request for athlete scoring."""
+    """Request for athlete scoring (legacy - basic fields)."""
     athlete_id: str
     sport: str
     school: Optional[str] = None
@@ -37,9 +43,16 @@ class AthleteScoreRequest(BaseModel):
     profile_completeness: Optional[int] = None
 
 
+class AthleteScoreRequestFull(BaseModel):
+    """Request for athlete scoring with full profile data."""
+    athlete_id: str
+    athlete_data: Dict[str, Any]
+
+
 class AthleteScoreResponse(BaseModel):
     """Comprehensive athlete score response."""
     athlete_id: str
+    athlete_name: Optional[str] = None
     overall_score: float
     scores: dict
     tier: str
@@ -48,48 +61,197 @@ class AthleteScoreResponse(BaseModel):
 
 
 class BrandFitRequest(BaseModel):
-    """Request for brand-athlete fit scoring."""
+    """Request for brand-athlete fit scoring (legacy - basic fields)."""
     athlete_id: str
     brand_category: str
     brand_values: List[str]
     target_demographics: Optional[List[str]] = None
 
 
+class BrandFitRequestFull(BaseModel):
+    """Request for brand-athlete fit scoring with full data."""
+    athlete_id: str
+    athlete_data: Dict[str, Any]
+    brand_data: Dict[str, Any]
+
+
+class BrandFitByIdRequest(BaseModel):
+    """Request for brand-athlete fit scoring by IDs only."""
+    athlete_id: str = Field(..., description="UUID of the athlete profile")
+    brand_id: str = Field(..., description="UUID of the brand intake request")
+
+
 class BrandFitResponse(BaseModel):
     """Brand fit score response."""
     athlete_id: str
+    athlete_name: Optional[str] = None
+    brand_id: Optional[str] = None
+    brand_name: Optional[str] = None
     brand_category: str
     fit_score: float
     match_reasons: List[str]
     concerns: List[str]
 
 
-# ============= Endpoints =============
+# ============= New Simplified Endpoints =============
 
-@router.post("/athlete", response_model=AthleteScoreResponse)
-async def score_athlete(request: AthleteScoreRequest):
+@router.get("/athlete/{athlete_id}")
+async def score_athlete_by_id(athlete_id: str):
     """
-    Calculate comprehensive athlete score.
-    
+    Score an athlete by ID using AI.
+
+    Simply provide the athlete's UUID - the service fetches all profile data
+    automatically and uses Claude AI to provide comprehensive scoring.
+
     Scoring components:
     - Profile Quality (0-25): Completeness, bio quality, media quality
     - Social Influence (0-30): Total reach, engagement, growth
     - Market Value (0-25): Sport popularity, conference tier, performance
     - NIL Readiness (0-20): Professionalism, brand safety, responsiveness
     """
-    # TODO: Implement actual scoring algorithm
-    # For now, return mock scores based on input
-    
+    try:
+        api_client = NILApiClient()
+        claude_client = ClaudeClient()
+        data_formatter = DataFormatter()
+
+        # Fetch athlete data
+        athlete_data = await api_client.get_athlete_profile(athlete_id)
+        if not athlete_data:
+            raise HTTPException(status_code=404, detail=f"Athlete not found: {athlete_id}")
+
+        # Format for AI
+        athlete_formatted = data_formatter.format_athlete_profile(athlete_data)
+
+        # Get AI scoring
+        scoring_result = await claude_client.score_athlete(athlete_formatted)
+
+        return AthleteScoreResponse(
+            athlete_id=athlete_id,
+            athlete_name=athlete_data.get("fullName") or f"{athlete_data.get('firstName', '')} {athlete_data.get('lastName', '')}".strip(),
+            overall_score=round(scoring_result["overall_score"], 1),
+            scores=scoring_result["component_scores"],
+            tier=scoring_result["tier"],
+            recommendations=scoring_result["recommendations"],
+            calculated_at=datetime.utcnow(),
+        )
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=f"Configuration error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in score_athlete_by_id: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to score athlete: {str(e)}")
+
+
+@router.post("/brand-fit/by-ids", response_model=BrandFitResponse)
+async def score_brand_fit_by_ids(request: BrandFitByIdRequest):
+    """
+    Score brand-athlete fit by IDs using AI.
+
+    Simply provide athlete_id and brand_id - the service fetches all data
+    automatically and uses Claude AI to analyze compatibility.
+    """
+    try:
+        api_client = NILApiClient()
+        claude_client = ClaudeClient()
+        data_formatter = DataFormatter()
+
+        # Fetch data
+        athlete_data = await api_client.get_athlete_profile(request.athlete_id)
+        if not athlete_data:
+            raise HTTPException(status_code=404, detail=f"Athlete not found: {request.athlete_id}")
+
+        brand_data = await api_client.get_brand_intake(request.brand_id)
+        if not brand_data:
+            raise HTTPException(status_code=404, detail=f"Brand not found: {request.brand_id}")
+
+        # Format for AI
+        athlete_formatted = data_formatter.format_athlete_profile(athlete_data)
+        brand_formatted = data_formatter.format_brand_campaign(brand_data)
+
+        # Get AI analysis
+        fit_result = await claude_client.score_brand_fit(athlete_formatted, brand_formatted)
+
+        return BrandFitResponse(
+            athlete_id=request.athlete_id,
+            athlete_name=athlete_data.get("fullName") or f"{athlete_data.get('firstName', '')} {athlete_data.get('lastName', '')}".strip(),
+            brand_id=request.brand_id,
+            brand_name=brand_data.get("company"),
+            brand_category=brand_data.get("industry", "Unknown"),
+            fit_score=round(fit_result["fit_score"], 1),
+            match_reasons=fit_result["match_reasons"],
+            concerns=fit_result["concerns"]
+        )
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=f"Configuration error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in score_brand_fit_by_ids: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to score brand fit: {str(e)}")
+
+
+@router.get("/athletes/batch")
+async def score_athletes_batch(
+    athlete_ids: str = Query(..., description="Comma-separated list of athlete UUIDs"),
+):
+    """
+    Score multiple athletes by IDs.
+
+    Provide a comma-separated list of athlete IDs to score them all at once.
+    """
+    ids = [id.strip() for id in athlete_ids.split(",") if id.strip()]
+
+    if not ids:
+        raise HTTPException(status_code=400, detail="At least one athlete_id is required")
+
+    if len(ids) > 20:
+        raise HTTPException(status_code=400, detail="Maximum 20 athletes per batch")
+
+    results = []
+    errors = []
+
+    for athlete_id in ids:
+        try:
+            result = await score_athlete_by_id(athlete_id)
+            results.append(result)
+        except HTTPException as e:
+            errors.append({"athlete_id": athlete_id, "error": e.detail})
+        except Exception as e:
+            errors.append({"athlete_id": athlete_id, "error": str(e)})
+
+    return {
+        "total_requested": len(ids),
+        "total_scored": len(results),
+        "results": results,
+        "errors": errors if errors else None,
+        "calculated_at": datetime.utcnow().isoformat()
+    }
+
+
+# ============= Legacy Endpoints (Backward Compatibility) =============
+
+@router.post("/athlete", response_model=AthleteScoreResponse)
+async def score_athlete(request: AthleteScoreRequest):
+    """
+    [LEGACY] Calculate comprehensive athlete score with basic fields.
+
+    Note: For the recommended approach, use GET /scoring/athlete/{athlete_id}
+    which fetches data automatically.
+    """
+    logger.warning("Using legacy endpoint - consider using GET /scoring/athlete/{athlete_id}")
+
     base_score = request.profile_completeness or 50
     social_score = 0
-    
+
     if request.social_metrics:
         total_followers = sum(m.followers for m in request.social_metrics)
         avg_engagement = sum(
             m.engagement_rate or 2.0 for m in request.social_metrics
         ) / len(request.social_metrics)
-        
-        # Simple scoring logic
+
         if total_followers > 100000:
             social_score = 30
         elif total_followers > 50000:
@@ -100,28 +262,22 @@ async def score_athlete(request: AthleteScoreRequest):
             social_score = 10
         else:
             social_score = 5
-        
-        # Engagement bonus
+
         if avg_engagement > 5:
             social_score = min(30, social_score + 5)
-    
-    # Market value based on sport/conference
+
     market_score = 15
     if request.sport in ["FOOTBALL", "BASKETBALL"]:
         market_score = 25
     elif request.sport in ["SOCCER", "BASEBALL", "VOLLEYBALL"]:
         market_score = 20
-    
-    # Conference bonus
+
     if request.conference in ["BIG10", "SEC", "ACC", "BIG12", "PAC12"]:
         market_score = min(25, market_score + 5)
-    
-    # NIL readiness (placeholder)
+
     nil_readiness = min(20, base_score // 5)
-    
     overall = (base_score * 0.25) + social_score + market_score + nil_readiness
-    
-    # Determine tier
+
     if overall >= 80:
         tier = "ELITE"
     elif overall >= 65:
@@ -130,8 +286,7 @@ async def score_athlete(request: AthleteScoreRequest):
         tier = "STANDARD"
     else:
         tier = "DEVELOPING"
-    
-    # Generate recommendations
+
     recommendations = []
     if base_score < 70:
         recommendations.append("Complete more profile fields to improve visibility")
@@ -139,7 +294,7 @@ async def score_athlete(request: AthleteScoreRequest):
         recommendations.append("Connect more social media accounts")
     if social_score < 15:
         recommendations.append("Focus on growing social media following")
-    
+
     return AthleteScoreResponse(
         athlete_id=request.athlete_id,
         overall_score=round(overall, 1),
@@ -155,20 +310,47 @@ async def score_athlete(request: AthleteScoreRequest):
     )
 
 
+@router.post("/athlete/ai", response_model=AthleteScoreResponse)
+async def score_athlete_ai(request: AthleteScoreRequestFull):
+    """
+    [LEGACY] Calculate comprehensive athlete score using AI with provided data.
+
+    Note: For the recommended approach, use GET /scoring/athlete/{athlete_id}
+    which fetches data automatically.
+    """
+    try:
+        claude_client = ClaudeClient()
+        data_formatter = DataFormatter()
+
+        athlete_formatted = data_formatter.format_athlete_profile(request.athlete_data)
+        scoring_result = await claude_client.score_athlete(athlete_formatted)
+
+        return AthleteScoreResponse(
+            athlete_id=request.athlete_id,
+            overall_score=round(scoring_result["overall_score"], 1),
+            scores=scoring_result["component_scores"],
+            tier=scoring_result["tier"],
+            recommendations=scoring_result["recommendations"],
+            calculated_at=datetime.utcnow(),
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=f"Configuration error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in score_athlete_ai: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to score athlete: {str(e)}")
+
+
 @router.post("/brand-fit", response_model=BrandFitResponse)
 async def score_brand_fit(request: BrandFitRequest):
     """
-    Calculate brand-athlete fit score.
-    
-    Considers:
-    - Brand category alignment
-    - Value matching
-    - Audience overlap
-    - Risk assessment
+    [LEGACY] Calculate brand-athlete fit score with basic fields.
+
+    Note: For the recommended approach, use POST /scoring/brand-fit/by-ids
+    which fetches data automatically.
     """
-    # TODO: Implement actual brand fit algorithm
-    # For now, return placeholder response
-    
+    logger.warning("Using legacy endpoint - consider using POST /scoring/brand-fit/by-ids")
+
     return BrandFitResponse(
         athlete_id=request.athlete_id,
         brand_category=request.brand_category,
@@ -184,6 +366,38 @@ async def score_brand_fit(request: BrandFitRequest):
     )
 
 
+@router.post("/brand-fit/ai", response_model=BrandFitResponse)
+async def score_brand_fit_ai(request: BrandFitRequestFull):
+    """
+    [LEGACY] Calculate brand-athlete fit score using AI with provided data.
+
+    Note: For the recommended approach, use POST /scoring/brand-fit/by-ids
+    which fetches data automatically.
+    """
+    try:
+        claude_client = ClaudeClient()
+        data_formatter = DataFormatter()
+
+        athlete_formatted = data_formatter.format_athlete_profile(request.athlete_data)
+        brand_formatted = data_formatter.format_brand_campaign(request.brand_data)
+
+        fit_result = await claude_client.score_brand_fit(athlete_formatted, brand_formatted)
+
+        return BrandFitResponse(
+            athlete_id=request.athlete_id,
+            brand_category=request.brand_data.get("industry") or request.brand_data.get("brand_category", "Unknown"),
+            fit_score=round(fit_result["fit_score"], 1),
+            match_reasons=fit_result["match_reasons"],
+            concerns=fit_result["concerns"]
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=f"Configuration error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in score_brand_fit_ai: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to score brand fit: {str(e)}")
+
+
 @router.get("/tiers")
 async def get_score_tiers():
     """Get scoring tier definitions."""
@@ -196,7 +410,7 @@ async def get_score_tiers():
                 "typical_deal_range": "$10,000+"
             },
             {
-                "name": "PREMIUM", 
+                "name": "PREMIUM",
                 "min_score": 65,
                 "description": "Strong candidates for brand partnerships",
                 "typical_deal_range": "$2,500 - $10,000"
@@ -215,4 +429,3 @@ async def get_score_tiers():
             }
         ]
     }
-
