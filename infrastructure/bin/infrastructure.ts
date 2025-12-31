@@ -6,6 +6,7 @@ import { EcrStack } from '../lib/ecr-stack';
 import { EcsStack } from '../lib/ecs-stack';
 import { CacheStack } from '../lib/cache-stack';
 import { S3Stack } from '../lib/s3-stack';
+import { MonitoringStack } from '../lib/monitoring-stack';
 
 const app = new cdk.App();
 
@@ -31,7 +32,7 @@ const ecrStack = new EcrStack(app, 'SSGEcrStack', {
 });
 
 // Phase 5: ECS Stack (depends on VPC, RDS, and ECR stacks)
-new EcsStack(app, 'SSGEcsStack', {
+const ecsStack = new EcsStack(app, 'SSGEcsStack', {
   env,
   vpcStack,
   rdsStack,
@@ -39,7 +40,7 @@ new EcsStack(app, 'SSGEcsStack', {
 });
 
 // Phase 6: ElastiCache Stack (depends on VPC Stack)
-new CacheStack(app, 'SSGCacheStack', {
+const cacheStack = new CacheStack(app, 'SSGCacheStack', {
   env,
   vpcStack,
 });
@@ -47,4 +48,12 @@ new CacheStack(app, 'SSGCacheStack', {
 // Phase 7: S3 Stack (media storage)
 new S3Stack(app, 'SSGS3Stack', {
   env,
+});
+
+// Phase 8: Monitoring Stack (depends on RDS, ECS, and Cache stacks)
+new MonitoringStack(app, 'SSGMonitoringStack', {
+  env,
+  rdsStack,
+  ecsStack,
+  cacheStack,
 });
