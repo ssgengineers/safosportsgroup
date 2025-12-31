@@ -4,6 +4,7 @@ import { VpcStack } from '../lib/vpc-stack';
 import { RdsStack } from '../lib/rds-stack';
 import { EcrStack } from '../lib/ecr-stack';
 import { EcsStack } from '../lib/ecs-stack';
+import { CacheStack } from '../lib/cache-stack';
 
 const app = new cdk.App();
 
@@ -34,4 +35,10 @@ new EcsStack(app, 'SSGEcsStack', {
   vpcStack,
   rdsStack,
   ecrStack,
+});
+
+// Phase 6: ElastiCache Stack (depends on VPC Stack)
+new CacheStack(app, 'SSGCacheStack', {
+  env,
+  vpcStack,
 });
