@@ -5,6 +5,7 @@ import { RdsStack } from '../lib/rds-stack';
 import { EcrStack } from '../lib/ecr-stack';
 import { EcsStack } from '../lib/ecs-stack';
 import { CacheStack } from '../lib/cache-stack';
+import { S3Stack } from '../lib/s3-stack';
 
 const app = new cdk.App();
 
@@ -41,4 +42,9 @@ new EcsStack(app, 'SSGEcsStack', {
 new CacheStack(app, 'SSGCacheStack', {
   env,
   vpcStack,
+});
+
+// Phase 7: S3 Stack (media storage)
+new S3Stack(app, 'SSGS3Stack', {
+  env,
 });
