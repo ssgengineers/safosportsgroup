@@ -31,14 +31,6 @@ const ecrStack = new EcrStack(app, 'SSGEcrStack', {
   env,
 });
 
-// Phase 5: ECS Stack (depends on VPC, RDS, and ECR stacks)
-const ecsStack = new EcsStack(app, 'SSGEcsStack', {
-  env,
-  vpcStack,
-  rdsStack,
-  ecrStack,
-});
-
 // Phase 6: ElastiCache Stack (depends on VPC Stack)
 const cacheStack = new CacheStack(app, 'SSGCacheStack', {
   env,
@@ -46,8 +38,19 @@ const cacheStack = new CacheStack(app, 'SSGCacheStack', {
 });
 
 // Phase 7: S3 Stack (media storage)
-new S3Stack(app, 'SSGS3Stack', {
+const s3Stack = new S3Stack(app, 'SSGS3Stack', {
   env,
+});
+
+// Phase 5: ECS Stack (depends on VPC, RDS, ECR, S3, and Cache stacks)
+// Note: Moved after S3 and Cache stacks to ensure dependencies are available
+const ecsStack = new EcsStack(app, 'SSGEcsStack', {
+  env,
+  vpcStack,
+  rdsStack,
+  ecrStack,
+  s3Stack,
+  cacheStack,
 });
 
 // Phase 8: Monitoring Stack (depends on RDS, ECS, and Cache stacks)
