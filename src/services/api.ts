@@ -241,4 +241,3 @@ export async function updateBrandRequestStatus(id: string, status: string, admin
   }
   return response.json();
 }
-
