@@ -3,10 +3,11 @@ spring:
     name: nil-api
 
   # AWS RDS PostgreSQL Configuration
+  # Defaults to local Docker Compose PostgreSQL for development
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:nil_db}
-    username: ${DB_USERNAME:nil_admin}
-    password: ${DB_PASSWORD:password}
+    username: ${DB_USERNAME:nil_user}
+    password: ${DB_PASSWORD:nil_password}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -32,8 +33,10 @@ spring:
       max-request-size: 50MB
 
   # Redis Configuration
+  # Set spring.data.redis.enabled=true to enable Redis caching (requires Redis running)
   data:
     redis:
+      enabled: ${REDIS_ENABLED:false}
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       timeout: 2000ms
@@ -55,10 +58,13 @@ server:
 clerk:
   issuer: ${CLERK_ISSUER:https://usable-kite-59.clerk.accounts.dev}
   jwks-url: ${CLERK_JWKS_URL:https://usable-kite-59.clerk.accounts.dev/.well-known/jwks.json}
+  secret-key: ${CLERK_SECRET_KEY:}
 
 # AWS S3 Configuration
+# Set aws.s3.enabled=true to enable S3 (requires AWS credentials)
 aws:
   s3:
+    enabled: ${AWS_S3_ENABLED:false}
     bucket-name: ${S3_BUCKET_NAME:ssg-media-bucket}
     region: ${AWS_REGION:us-east-2}
 

@@ -5,15 +5,22 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";  -- For text search
 
--- Insert default roles
-INSERT INTO roles (id, name, description, created_at, version)
-VALUES 
-    (uuid_generate_v4(), 'ATHLETE', 'Athlete user who can create profiles and receive NIL deals', NOW(), 0),
-    (uuid_generate_v4(), 'BRAND', 'Brand user who can create campaigns and match with athletes', NOW(), 0),
-    (uuid_generate_v4(), 'AGENCY_ADMIN', 'Agency administrator with full access to manage athletes and brands', NOW(), 0),
-    (uuid_generate_v4(), 'STAFF', 'Staff member with limited administrative access', NOW(), 0),
-    (uuid_generate_v4(), 'SUPER_ADMIN', 'Super administrator with full system access', NOW(), 0)
-ON CONFLICT (name) DO NOTHING;
+-- Insert default roles (only if roles table exists - Hibernate will create it)
+-- This will be handled by the application on first startup
+-- Roles are created automatically by ClerkUserService when needed
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'roles') THEN
+        INSERT INTO roles (id, name, description, created_at, version)
+        VALUES 
+            (uuid_generate_v4(), 'ATHLETE', 'Athlete user who can create profiles and receive NIL deals', NOW(), 0),
+            (uuid_generate_v4(), 'BRAND', 'Brand user who can create campaigns and match with athletes', NOW(), 0),
+            (uuid_generate_v4(), 'AGENCY_ADMIN', 'Agency administrator with full access to manage athletes and brands', NOW(), 0),
+            (uuid_generate_v4(), 'STAFF', 'Staff member with limited administrative access', NOW(), 0),
+            (uuid_generate_v4(), 'SUPER_ADMIN', 'Super administrator with full system access', NOW(), 0)
+        ON CONFLICT (name) DO NOTHING;
+    END IF;
+END $$;
 
 -- Create indexes for performance (JPA will create basic indexes, these are extras)
 -- Note: These will be created after tables exist from JPA auto-creation

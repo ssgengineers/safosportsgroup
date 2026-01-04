@@ -3,6 +3,7 @@ package com.nil.service;
 import com.nil.dto.*;
 import com.nil.entity.*;
 import com.nil.entity.enums.RoleType;
+import com.nil.entity.enums.SocialPlatform;
 import com.nil.exception.BadRequestException;
 import com.nil.exception.ResourceNotFoundException;
 import com.nil.repository.*;
@@ -119,7 +120,89 @@ public class AthleteService {
         AthleteProfile profile = athleteProfileRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Athlete profile not found: " + id));
 
+        // Update user info if provided
+        User user = profile.getUser();
+        if (request.getFirstName() != null) {
+            user.setFirstName(request.getFirstName());
+        }
+        if (request.getLastName() != null) {
+            user.setLastName(request.getLastName());
+        }
+        if (request.getEmail() != null) {
+            user.setEmail(request.getEmail());
+        }
+        if (request.getPhone() != null) {
+            user.setPhone(request.getPhone());
+        }
+        userRepository.save(user);
+
+        // Update profile fields
         mapRequestToProfile(request, profile);
+
+        // Handle social accounts - update existing or create new ones
+        if (request.getSocialAccounts() != null) {
+            // Load existing social accounts
+            List<AthleteSocialAccount> existingAccounts = socialAccountRepository.findByAthleteProfileId(id);
+            
+            // Track which platforms are in the request
+            Set<SocialPlatform> requestedPlatforms = request.getSocialAccounts().stream()
+                    .filter(sa -> sa.getPlatform() != null && sa.getHandle() != null && !sa.getHandle().trim().isEmpty())
+                    .map(SocialAccountRequest::getPlatform)
+                    .collect(Collectors.toSet());
+            
+            // Update or create social accounts from request
+            for (SocialAccountRequest socialReq : request.getSocialAccounts()) {
+                if (socialReq.getPlatform() != null && socialReq.getHandle() != null && !socialReq.getHandle().trim().isEmpty()) {
+                    try {
+                        // Check if account already exists for this platform
+                        Optional<AthleteSocialAccount> existingAccountOpt = existingAccounts.stream()
+                                .filter(acc -> acc.getPlatform() == socialReq.getPlatform())
+                                .findFirst();
+                        
+                        AthleteSocialAccount social;
+                        if (existingAccountOpt.isPresent()) {
+                            // Update existing account
+                            social = existingAccountOpt.get();
+                            social.setHandle(socialReq.getHandle().trim());
+                            if (socialReq.getProfileUrl() != null) {
+                                social.setProfileUrl(socialReq.getProfileUrl().trim());
+                            }
+                            if (socialReq.getFollowerCount() != null) {
+                                social.setFollowers(socialReq.getFollowerCount());
+                            }
+                            // Save the updated account
+                            socialAccountRepository.save(social);
+                        } else {
+                            // Create new account
+                            social = new AthleteSocialAccount();
+                            social.setAthleteProfile(profile);
+                            social.setPlatform(socialReq.getPlatform());
+                            social.setHandle(socialReq.getHandle().trim());
+                            if (socialReq.getProfileUrl() != null) {
+                                social.setProfileUrl(socialReq.getProfileUrl().trim());
+                            }
+                            if (socialReq.getFollowerCount() != null) {
+                                social.setFollowers(socialReq.getFollowerCount());
+                            }
+                            // Add to collection and save
+                            profile.getSocialAccounts().add(social);
+                            socialAccountRepository.save(social);
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to add/update social account for platform {}: {}", socialReq.getPlatform(), e.getMessage());
+                    }
+                }
+            }
+            
+            // Delete accounts that are not in the request
+            for (AthleteSocialAccount existing : existingAccounts) {
+                if (!requestedPlatforms.contains(existing.getPlatform())) {
+                    socialAccountRepository.delete(existing);
+                    profile.getSocialAccounts().remove(existing);
+                }
+            }
+        }
+
         profile.setProfileCompletenessScore(calculateCompleteness(profile));
 
         AthleteProfile saved = athleteProfileRepository.save(profile);
@@ -260,6 +343,11 @@ public class AthleteService {
         if (request.getRequestedRate() != null) profile.setMinimumDealValue(request.getRequestedRate().doubleValue());
         if (request.getDateOfBirth() != null) profile.setDateOfBirth(request.getDateOfBirth());
         if (request.getGender() != null) profile.setGender(request.getGender());
+        // Performance & Recognition
+        if (request.getTeamRanking() != null) profile.setTeamRanking(request.getTeamRanking());
+        if (request.getStatsSummary() != null) profile.setStatsSummary(request.getStatsSummary());
+        if (request.getAwards() != null) profile.setAwards(request.getAwards());
+        if (request.getAchievements() != null) profile.setAchievements(request.getAchievements());
     }
 
     private AthleteProfileResponse mapProfileToResponse(AthleteProfile profile) {
@@ -304,6 +392,10 @@ public class AthleteService {
                 .hometown(profile.getHometown())
                 .bio(profile.getBio())
                 .headshotUrl(headshotUrl)
+                .teamRanking(profile.getTeamRanking())
+                .statsSummary(profile.getStatsSummary())
+                .awards(profile.getAwards())
+                .achievements(profile.getAchievements())
                 .requestedRate(profile.getMinimumDealValue() != null ? 
                     java.math.BigDecimal.valueOf(profile.getMinimumDealValue()) : null)
                 .nilReady(profile.getIsAcceptingDeals())

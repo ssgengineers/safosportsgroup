@@ -109,9 +109,80 @@ public class ClerkJwtFilter extends OncePerRequestFilter {
             String email = claims.get("email", String.class);
             String firstName = claims.get("first_name", String.class);
             String lastName = claims.get("last_name", String.class);
+            
+            // Log all available claims for debugging
+            log.debug("JWT claims for user {}: {}", clerkId, claims.keySet());
+            
+            // If email is not in claims, try alternative claim names
+            if (email == null || email.isEmpty()) {
+                email = claims.get("https://clerk.dev/email", String.class);
+            }
+            if (email == null || email.isEmpty()) {
+                // Try to get from primary_email_address if available
+                Object primaryEmailObj = claims.get("primary_email_address");
+                if (primaryEmailObj != null) {
+                    if (primaryEmailObj instanceof String) {
+                        email = (String) primaryEmailObj;
+                    } else if (primaryEmailObj instanceof Map) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> emailMap = (Map<String, Object>) primaryEmailObj;
+                        email = (String) emailMap.get("email_address");
+                    }
+                }
+            }
+            
+            // Log extracted values
+            log.debug("Extracted from JWT - clerkId: {}, email: {}, firstName: {}, lastName: {}", 
+                      clerkId, email, firstName, lastName);
+
+            // Validate that we have required fields
+            if (clerkId == null || clerkId.isEmpty()) {
+                log.warn("JWT token missing required 'sub' claim (clerkId)");
+                filterChain.doFilter(request, response);
+                return;
+            }
+            
+            if (email == null || email.isEmpty()) {
+                log.warn("JWT token missing email for user: {}. Attempting to fetch from Clerk API.", clerkId);
+                // Try to fetch user from Clerk API
+                ClerkUserService.UserInfo userInfo = clerkUserService.fetchUserFromClerkApi(clerkId);
+                if (userInfo != null && userInfo.email != null && !userInfo.email.isEmpty()) {
+                    email = userInfo.email;
+                    if (firstName == null || firstName.isEmpty()) {
+                        firstName = userInfo.firstName;
+                    }
+                    if (lastName == null || lastName.isEmpty()) {
+                        lastName = userInfo.lastName;
+                    }
+                    log.info("Successfully fetched email from Clerk API for user: {}", clerkId);
+                } else {
+                    log.error("Could not fetch email from Clerk API for user: {}. Skipping user sync.", clerkId);
+                    // Still set authentication but don't sync user
+                    List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                    authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+                    UsernamePasswordAuthenticationToken authentication = 
+                        new UsernamePasswordAuthenticationToken(clerkId, null, authorities);
+                    Map<String, Object> details = new HashMap<>();
+                    details.put("clerkId", clerkId);
+                    authentication.setDetails(details);
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+            }
 
             // Sync user to local database (creates if not exists)
-            clerkUserService.syncClerkUser(clerkId, email, firstName, lastName);
+            try {
+                clerkUserService.syncClerkUser(clerkId, email, firstName, lastName);
+            } catch (IllegalArgumentException e) {
+                log.error("Failed to sync user {}: {}", clerkId, e.getMessage());
+                // Don't set authentication if we can't sync - this will cause issues downstream
+                filterChain.doFilter(request, response);
+                return;
+            } catch (Exception e) {
+                log.error("Failed to sync user {}: {}", clerkId, e.getMessage(), e);
+                // Continue with authentication even if sync fails (for other exceptions)
+            }
 
             // Set authentication in security context
             List<SimpleGrantedAuthority> authorities = new ArrayList<>();
@@ -132,6 +203,8 @@ public class ClerkJwtFilter extends OncePerRequestFilter {
             Map<String, Object> details = new HashMap<>();
             details.put("clerkId", clerkId);
             details.put("email", email);
+            details.put("firstName", firstName);
+            details.put("lastName", lastName);
             authentication.setDetails(details);
             
             SecurityContextHolder.getContext().setAuthentication(authentication);

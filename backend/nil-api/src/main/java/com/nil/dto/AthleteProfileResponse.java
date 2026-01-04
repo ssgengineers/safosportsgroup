@@ -52,6 +52,12 @@ public class AthleteProfileResponse {
     private String bio;
     private String headshotUrl;
     
+    // Performance & Recognition
+    private Integer teamRanking;
+    private String statsSummary; // JSON or formatted string
+    private String awards; // JSON array of awards
+    private String achievements;
+    
     // NIL Info
     private BigDecimal requestedRate;
     private Boolean nilReady;

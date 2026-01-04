@@ -1,7 +1,9 @@
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import Navigation from "@/components/layout/Navigation";
-import { getAthleteIntakeRequests, getBrandIntakeRequests, getIntakeStats, type AthleteIntakeRequestEntity, type BrandIntakeRequestEntity } from "@/services/api";
+import { getAthleteIntakeRequests, getBrandIntakeRequests, getIntakeStats, updateAthleteRequestStatus, updateBrandRequestStatus, getAllAthleteProfiles, type AthleteIntakeRequestEntity, type BrandIntakeRequestEntity, type AthleteProfileResponse } from "@/services/api";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -506,6 +508,8 @@ type BrandRequest = typeof brandRequests[0];
 type Brand = typeof brands[0];
 
 const Admin = () => {
+  const { toast } = useToast();
+  const { getToken } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedAthleteRequest, setSelectedAthleteRequest] = useState<AthleteIntakeRequestEntity | null>(null);
   const [selectedBrandRequest, setSelectedBrandRequest] = useState<BrandIntakeRequestEntity | null>(null);
@@ -515,29 +519,198 @@ const Admin = () => {
   // Real data from API
   const [athleteRequests, setAthleteRequests] = useState<AthleteIntakeRequestEntity[]>([]);
   const [brandRequests, setBrandRequests] = useState<BrandIntakeRequestEntity[]>([]);
+  const [athleteProfiles, setAthleteProfiles] = useState<AthleteProfileResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState({ athletes: { pending: 0, total: 0 }, brands: { pending: 0, total: 0 } });
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      const [athletesData, brandsData, statsData] = await Promise.all([
+        getAthleteIntakeRequests(),
+        getBrandIntakeRequests(),
+        getIntakeStats()
+      ]);
+      setAthleteRequests(athletesData.content || []);
+      setBrandRequests(brandsData.content || []);
+      setStats(statsData);
+      
+      // Fetch athlete profiles separately with error handling
+      try {
+        const token = await getToken();
+        const profilesData = await getAllAthleteProfiles(0, 100, token || undefined);
+        console.log('Fetched athlete profiles:', profilesData);
+        console.log('Number of profiles:', profilesData.content?.length || 0);
+        setAthleteProfiles(profilesData.content || []);
+      } catch (profileError) {
+        console.error('Failed to fetch athlete profiles:', profileError);
+        // Don't show toast for profile fetch errors, just log it
+        setAthleteProfiles([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load data. Please refresh the page.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        const [athletesData, brandsData, statsData] = await Promise.all([
-          getAthleteIntakeRequests(),
-          getBrandIntakeRequests(),
-          getIntakeStats()
-        ]);
-        setAthleteRequests(athletesData.content || []);
-        setBrandRequests(brandsData.content || []);
-        setStats(statsData);
-      } catch (error) {
-        console.error('Failed to fetch intake requests:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchData();
   }, []);
+
+  const handleApproveAthlete = async () => {
+    if (!selectedAthleteRequest) return;
+    
+    try {
+      setIsUpdating(true);
+      await updateAthleteRequestStatus(selectedAthleteRequest.id, "APPROVED");
+      
+      // Update local state
+      setAthleteRequests(prev => 
+        prev.map(req => 
+          req.id === selectedAthleteRequest.id 
+            ? { ...req, status: "APPROVED" }
+            : req
+        )
+      );
+      
+      // Update selected request
+      setSelectedAthleteRequest({ ...selectedAthleteRequest, status: "APPROVED" });
+      
+      // Refresh all data including profiles
+      await fetchData();
+      
+      toast({
+        title: "Approved!",
+        description: `An invitation has been sent to ${selectedAthleteRequest.firstName} ${selectedAthleteRequest.lastName}. They will appear in Athletes once they sign up.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to approve application. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleRejectAthlete = async () => {
+    if (!selectedAthleteRequest) return;
+    
+    try {
+      setIsUpdating(true);
+      await updateAthleteRequestStatus(selectedAthleteRequest.id, "REJECTED");
+      
+      // Update local state
+      setAthleteRequests(prev => 
+        prev.map(req => 
+          req.id === selectedAthleteRequest.id 
+            ? { ...req, status: "REJECTED" }
+            : req
+        )
+      );
+      
+      // Update selected request
+      setSelectedAthleteRequest({ ...selectedAthleteRequest, status: "REJECTED" });
+      
+      // Refresh stats
+      await fetchData();
+      
+      toast({
+        title: "Rejected",
+        description: `${selectedAthleteRequest.firstName} ${selectedAthleteRequest.lastName}'s application has been rejected.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to reject application. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleApproveBrand = async () => {
+    if (!selectedBrandRequest) return;
+    
+    try {
+      setIsUpdating(true);
+      await updateBrandRequestStatus(selectedBrandRequest.id, "APPROVED");
+      
+      // Update local state
+      setBrandRequests(prev => 
+        prev.map(req => 
+          req.id === selectedBrandRequest.id 
+            ? { ...req, status: "APPROVED" }
+            : req
+        )
+      );
+      
+      // Update selected request
+      setSelectedBrandRequest({ ...selectedBrandRequest, status: "APPROVED" });
+      
+      // Refresh stats
+      await fetchData();
+      
+      toast({
+        title: "Approved!",
+        description: `${selectedBrandRequest.company}'s partnership request has been approved.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to approve request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleRejectBrand = async () => {
+    if (!selectedBrandRequest) return;
+    
+    try {
+      setIsUpdating(true);
+      await updateBrandRequestStatus(selectedBrandRequest.id, "REJECTED");
+      
+      // Update local state
+      setBrandRequests(prev => 
+        prev.map(req => 
+          req.id === selectedBrandRequest.id 
+            ? { ...req, status: "REJECTED" }
+            : req
+        )
+      );
+      
+      // Update selected request
+      setSelectedBrandRequest({ ...selectedBrandRequest, status: "REJECTED" });
+      
+      // Refresh stats
+      await fetchData();
+      
+      toast({
+        title: "Rejected",
+        description: `${selectedBrandRequest.company}'s partnership request has been rejected.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to reject request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     const statusLower = status?.toLowerCase();
@@ -690,124 +863,205 @@ const Admin = () => {
 
               {/* Athletes Tab */}
               <TabsContent value="athletes">
-                <div className="grid gap-4">
-                  {athletes.map((athlete) => (
-                    <motion.div
-                      key={athlete.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="bg-card rounded-xl border border-border p-6 hover:border-primary/50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedAthlete(athlete)}
-                    >
-                      <div className="flex items-start gap-6">
-                        {/* Profile Image */}
-                        <img
-                          src={athlete.profileImage}
-                          alt={`${athlete.firstName} ${athlete.lastName}`}
-                          className="w-20 h-20 rounded-full object-cover border-2 border-primary"
-                        />
-                        
-                        {/* Basic Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-1">
-                            <h3 className="text-xl font-bold">{athlete.firstName} {athlete.lastName}</h3>
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(athlete.status)}`}>
-                              {getStatusIcon(athlete.status)}
-                              {athlete.status}
-                            </span>
-                          </div>
-                          <p className="text-muted-foreground mb-2">
-                            {athlete.sport} • {athlete.position} • {athlete.school}
-                          </p>
-                          <div className="flex items-center gap-4 text-sm">
-                            <span className="text-muted-foreground">
-                              <span className="text-foreground font-semibold">{athlete.totalFollowers}</span> followers
-                            </span>
-                            <span className="text-muted-foreground">
-                              <span className="text-primary font-semibold">{athlete.deals.filter(d => d.status === "active").length}</span> active deals
-                            </span>
-                            <span className="text-muted-foreground">
-                              <span className="text-green-500 font-semibold">${calculateTotalDealValue(athlete)}</span> total value
-                            </span>
-                          </div>
-                        </div>
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
+                  </div>
+                ) : athleteProfiles.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Users size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>No athlete profiles found.</p>
+                    <p className="text-sm mt-2">Athletes will appear here after they complete sign-up.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4">
+                    {athleteProfiles
+                      .filter(profile => {
+                        if (!searchTerm) return true;
+                        const search = searchTerm.toLowerCase();
+                        const name = `${profile.firstName || ''} ${profile.lastName || ''}`.toLowerCase();
+                        const sport = profile.sport?.toString().toLowerCase() || '';
+                        const school = profile.schoolName?.toLowerCase() || '';
+                        return name.includes(search) || sport.includes(search) || school.includes(search);
+                      })
+                      .map((profile) => (
+                        <motion.div
+                          key={profile.id}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="bg-card rounded-xl border border-border p-6 hover:border-primary/50 transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-start gap-6">
+                            {/* Profile Image Placeholder */}
+                            <div className="w-20 h-20 rounded-full bg-primary/20 border-2 border-primary flex items-center justify-center">
+                              <Users size={32} className="text-primary" />
+                            </div>
+                            
+                            {/* Basic Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-3 mb-1">
+                                <h3 className="text-xl font-bold">
+                                  {profile.firstName || ''} {profile.lastName || ''}
+                                </h3>
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  profile.isActive ? 'bg-green-500/20 text-green-500' : 'bg-gray-500/20 text-gray-500'
+                                }`}>
+                                  {profile.isActive ? <CheckCircle size={12} /> : <Clock size={12} />}
+                                  {profile.isActive ? 'active' : 'inactive'}
+                                </span>
+                              </div>
+                              <p className="text-muted-foreground mb-2">
+                                {profile.sport?.toString() || 'N/A'} • {profile.position || 'N/A'} • {profile.schoolName || 'N/A'}
+                              </p>
+                              <div className="flex items-center gap-4 text-sm">
+                                {profile.socialAccounts && profile.socialAccounts.length > 0 && (
+                                  <span className="text-muted-foreground">
+                                    <span className="text-foreground font-semibold">
+                                      {profile.socialAccounts.reduce((sum, acc) => sum + (acc.followers || 0), 0).toLocaleString()}
+                                    </span> followers
+                                  </span>
+                                )}
+                                <span className="text-muted-foreground">
+                                  <span className="text-primary font-semibold">{profile.profileCompletenessScore || profile.completenessScore || 0}%</span> complete
+                                </span>
+                                {profile.user?.email && (
+                                  <span className="text-muted-foreground text-xs">
+                                    {profile.user.email}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
 
-                        {/* Tags Preview */}
-                        <div className="hidden lg:flex flex-wrap gap-1 max-w-xs">
-                          {athlete.interestTags.slice(0, 4).map((tag, i) => (
-                            <Badge key={i} variant="secondary" className="text-xs">
-                              {tag}
-                            </Badge>
-                          ))}
-                          {athlete.interestTags.length > 4 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{athlete.interestTags.length - 4}
-                            </Badge>
-                          )}
-                        </div>
-
-                        {/* View Button */}
-                        <Button variant="outline" size="sm">
-                          <Eye size={14} className="mr-1" />
-                          View Profile
-                        </Button>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
+                            {/* View Button */}
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                // Convert AthleteProfileResponse to Athlete format for the modal
+                                const athlete: Athlete = {
+                                  id: parseInt(profile.id) || 0,
+                                  firstName: profile.firstName || '',
+                                  lastName: profile.lastName || '',
+                                  email: profile.email || profile.user?.email || '',
+                                  phone: '',
+                                  location: profile.hometown || '',
+                                  dateOfBirth: profile.dateOfBirth || '',
+                                  profileImage: `https://ui-avatars.com/api/?name=${profile.firstName}+${profile.lastName}&background=random&color=fff&size=128`,
+                                  bio: profile.bio || 'No bio available.',
+                                  sport: profile.sport?.toString() || 'N/A',
+                                  position: profile.position || 'N/A',
+                                  school: profile.schoolName || '',
+                                  conference: profile.conference || '',
+                                  teamRanking: '',
+                                  performanceLevel: '',
+                                  seasonStats: {},
+                                  awards: [],
+                                  socialAccounts: profile.socialAccounts?.map(acc => ({
+                                    platform: acc.platform.toString(),
+                                    handle: acc.handle,
+                                    followers: acc.followers?.toString() || '0'
+                                  })) || [],
+                                  totalFollowers: profile.socialAccounts?.reduce((sum, acc) => sum + (acc.followers || 0), 0).toString() || '0',
+                                  engagementRate: '0%',
+                                  interestTags: [],
+                                  contentTypes: [],
+                                  deals: [],
+                                  status: profile.isActive ? 'active' : 'inactive',
+                                  joinedAt: profile.createdAt ? new Date(profile.createdAt).toLocaleDateString() : '',
+                                  profileCompleteness: profile.profileCompletenessScore || profile.completenessScore || 0
+                                };
+                                setSelectedAthlete(athlete);
+                              }}
+                            >
+                              <Eye size={14} className="mr-1" />
+                              View
+                            </Button>
+                          </div>
+                        </motion.div>
+                      ))}
+                  </div>
+                )}
               </TabsContent>
 
               {/* Brands Tab */}
               <TabsContent value="brands">
-                <div className="bg-card rounded-xl border border-border overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-muted/50">
-                        <tr>
-                          <th className="text-left p-4 font-semibold">Company</th>
-                          <th className="text-left p-4 font-semibold">Contact</th>
-                          <th className="text-left p-4 font-semibold">Industry</th>
-                          <th className="text-left p-4 font-semibold">Budget</th>
-                          <th className="text-left p-4 font-semibold">Active Deals</th>
-                          <th className="text-left p-4 font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {brands.map((brand) => (
-                          <tr key={brand.id} className="border-t border-border hover:bg-muted/30 transition-colors">
-                            <td className="p-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-500 font-bold">
-                                  {brand.company[0]}
-                                </div>
-                                <p className="font-medium">{brand.company}</p>
-                              </div>
-                            </td>
-                            <td className="p-4">
-                              <div>
-                                <p className="font-medium">{brand.contactName}</p>
-                                <p className="text-sm text-muted-foreground">{brand.email}</p>
-                              </div>
-                            </td>
-                            <td className="p-4">{brand.industry}</td>
-                            <td className="p-4">{brand.budget}</td>
-                            <td className="p-4">
-                              <span className="px-2 py-1 rounded-full bg-purple-500/20 text-purple-500 text-sm font-medium">
-                                {brand.activeDeals} deals
-                              </span>
-                            </td>
-                            <td className="p-4">
-                              <Button size="sm" variant="outline" onClick={() => setSelectedBrand(brand)}>
-                                <Eye size={14} className="mr-1" />
-                                View
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-card rounded-xl border border-border overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="text-left p-4 font-semibold">Company</th>
+                            <th className="text-left p-4 font-semibold">Contact</th>
+                            <th className="text-left p-4 font-semibold">Industry</th>
+                            <th className="text-left p-4 font-semibold">Budget</th>
+                            <th className="text-left p-4 font-semibold">Status</th>
+                            <th className="text-left p-4 font-semibold">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {brandRequests
+                            .filter(brand => brand.status === "ACCEPTED" || brand.status === "APPROVED" || brand.status === "INVITED")
+                            .filter(brand => {
+                              if (!searchTerm) return true;
+                              const search = searchTerm.toLowerCase();
+                              return brand.company?.toLowerCase().includes(search) ||
+                                     brand.email?.toLowerCase().includes(search) ||
+                                     brand.industry?.toLowerCase().includes(search);
+                            })
+                            .map((brand) => (
+                              <tr key={brand.id} className="border-t border-border hover:bg-muted/30 transition-colors">
+                                <td className="p-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-500 font-bold">
+                                      {brand.company?.[0]?.toUpperCase() || 'B'}
+                                    </div>
+                                    <p className="font-medium">{brand.company}</p>
+                                  </div>
+                                </td>
+                                <td className="p-4">
+                                  <div>
+                                    <p className="font-medium">{brand.contactFirstName} {brand.contactLastName}</p>
+                                    <p className="text-sm text-muted-foreground">{brand.email}</p>
+                                  </div>
+                                </td>
+                                <td className="p-4">{brand.industry || 'N/A'}</td>
+                                <td className="p-4">{brand.budget || 'N/A'}</td>
+                                <td className="p-4">
+                                  <span className={`px-2 py-1 rounded-full text-sm font-medium ${
+                                    brand.status === "ACCEPTED" ? 'bg-green-500/20 text-green-500' :
+                                    brand.status === "INVITED" ? 'bg-yellow-500/20 text-yellow-500' :
+                                    'bg-gray-500/20 text-gray-500'
+                                  }`}>
+                                    {brand.status}
+                                  </span>
+                                </td>
+                                <td className="p-4">
+                                  <Button size="sm" variant="outline" onClick={() => setSelectedBrandRequest(brand)}>
+                                    <Eye size={14} className="mr-1" />
+                                    View
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          {brandRequests.filter(b => b.status === "ACCEPTED" || b.status === "APPROVED" || b.status === "INVITED").length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="p-12 text-center text-muted-foreground">
+                                <Building2 size={48} className="mx-auto mb-4 opacity-50" />
+                                <p>No active brands found.</p>
+                                <p className="text-sm mt-2">Brands will appear here after they complete sign-up.</p>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </TabsContent>
 
               {/* Athlete Requests Tab */}
@@ -1267,11 +1521,22 @@ const Admin = () => {
               </div>
               {selectedAthleteRequest.status?.toLowerCase() === "pending" && (
                 <div className="flex gap-3">
-                  <Button className="flex-1 bg-green-600 hover:bg-green-700">
-                    <CheckCircle size={16} className="mr-2" /> Approve
+                  <Button 
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    onClick={handleApproveAthlete}
+                    disabled={isUpdating}
+                  >
+                    <CheckCircle size={16} className="mr-2" /> 
+                    {isUpdating ? "Approving..." : "Approve"}
                   </Button>
-                  <Button variant="destructive" className="flex-1">
-                    <XCircle size={16} className="mr-2" /> Reject
+                  <Button 
+                    variant="destructive" 
+                    className="flex-1"
+                    onClick={handleRejectAthlete}
+                    disabled={isUpdating}
+                  >
+                    <XCircle size={16} className="mr-2" /> 
+                    {isUpdating ? "Rejecting..." : "Reject"}
                   </Button>
                 </div>
               )}
@@ -1327,11 +1592,22 @@ const Admin = () => {
               </div>
               {selectedBrandRequest.status?.toLowerCase() === "pending" && (
                 <div className="flex gap-3">
-                  <Button className="flex-1 bg-green-600 hover:bg-green-700">
-                    <CheckCircle size={16} className="mr-2" /> Approve
+                  <Button 
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    onClick={handleApproveBrand}
+                    disabled={isUpdating}
+                  >
+                    <CheckCircle size={16} className="mr-2" /> 
+                    {isUpdating ? "Approving..." : "Approve"}
                   </Button>
-                  <Button variant="destructive" className="flex-1">
-                    <XCircle size={16} className="mr-2" /> Reject
+                  <Button 
+                    variant="destructive" 
+                    className="flex-1"
+                    onClick={handleRejectBrand}
+                    disabled={isUpdating}
+                  >
+                    <XCircle size={16} className="mr-2" /> 
+                    {isUpdating ? "Rejecting..." : "Reject"}
                   </Button>
                 </div>
               )}

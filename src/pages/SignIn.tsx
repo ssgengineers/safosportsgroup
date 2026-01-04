@@ -1,18 +1,54 @@
 import { motion } from "framer-motion";
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import Navigation from "@/components/layout/Navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { SignedIn, useAuth } from "@clerk/clerk-react";
+import { getUserMe } from "@/services/api";
 
 const SignIn = () => {
   const { toast } = useToast();
+  const { getToken, isSignedIn, isLoaded } = useAuth();
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: ""
   });
+
+  // Redirect logic after sign-in
+  useEffect(() => {
+    const redirectUser = async () => {
+      if (isLoaded && isSignedIn) {
+        try {
+          const token = await getToken();
+          if (token) {
+            const user = await getUserMe(token);
+            
+            // Redirect based on role
+            if (user.roles.includes("ADMIN")) {
+              navigate("/admin", { replace: true });
+            } else if (user.roles.includes("ATHLETE")) {
+              navigate("/athlete-dashboard", { replace: true });
+            } else if (user.roles.includes("BRAND")) {
+              navigate("/brand-dashboard", { replace: true });
+            } else {
+              // Default to home if no specific role
+              navigate("/", { replace: true });
+            }
+          }
+        } catch (error) {
+          console.error("Failed to fetch user info for redirect:", error);
+          // Still redirect to home if we can't get user info
+          navigate("/", { replace: true });
+        }
+      }
+    };
+
+    redirectUser();
+  }, [isLoaded, isSignedIn, getToken, navigate]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +70,21 @@ const SignIn = () => {
       description: "Social authentication will be available shortly.",
     });
   };
+
+  // If already signed in, show loading while redirecting
+  if (isLoaded && isSignedIn) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="pt-32 pb-20 px-6 flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Redirecting...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">

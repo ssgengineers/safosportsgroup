@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, Shield } from "lucide-react";
-// import { Building2 } from "lucide-react"; // TODO: Uncomment when brand role auth is set up
+import { Menu, X, Shield, Building2, User } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,17 +9,45 @@ import {
   SignInButton,
   UserButton,
   useUser,
+  useAuth,
 } from "@clerk/clerk-react";
+import { getUserMe, UserResponse } from "@/services/api";
 
 const Navigation = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [hasRedirected, setHasRedirected] = useState(false);
+  const [userData, setUserData] = useState<UserResponse | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isSignedIn, isLoaded } = useUser();
+  const { getToken } = useAuth();
 
   const isAdmin = user?.publicMetadata?.role === "admin";
+
+  // Fetch user data to get roles
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (isLoaded && isSignedIn) {
+        try {
+          const token = await getToken();
+          if (token) {
+            const data = await getUserMe(token);
+            setUserData(data);
+          }
+        } catch (error) {
+          console.error("Failed to fetch user data:", error);
+        }
+      } else {
+        setUserData(null);
+      }
+    };
+
+    fetchUserData();
+  }, [isLoaded, isSignedIn, getToken]);
+
+  const isAthlete = userData?.roles.includes("ATHLETE") || false;
+  const isBrand = userData?.roles.includes("BRAND") || false;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -111,24 +138,22 @@ const Navigation = () => {
                     </Button>
                   </Link>
                 )}
-                {/* TODO: Uncomment when brand role authentication is set up
-                <Link to="/brand-dashboard">
-                  <Button variant="ghost" className="text-primary hover:bg-primary/10 font-semibold">
-                    <Building2 size={16} className="mr-2" />
-                    BRAND PORTAL
-                  </Button>
-                </Link>
-                */}
-                <Link to="/athlete-intake">
-                  <Button variant="outline" className="border-primary text-primary hover:bg-primary hover:text-primary-foreground">
-                    ATHLETE SIGNUP
-                  </Button>
-                </Link>
-                <Link to="/brand-intake">
-                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90 font-bold">
-                    BRAND SIGNUP
-                  </Button>
-                </Link>
+                {isAthlete && (
+                  <Link to="/athlete-dashboard">
+                    <Button variant="ghost" className="text-primary hover:bg-primary/10 font-semibold">
+                      <User size={16} className="mr-2" />
+                      DASHBOARD
+                    </Button>
+                  </Link>
+                )}
+                {isBrand && (
+                  <Link to="/brand-dashboard">
+                    <Button variant="ghost" className="text-primary hover:bg-primary/10 font-semibold">
+                      <Building2 size={16} className="mr-2" />
+                      DASHBOARD
+                    </Button>
+                  </Link>
+                )}
                 <UserButton 
                   afterSignOutUrl="/"
                   appearance={{
@@ -215,25 +240,35 @@ const Navigation = () => {
                         </Button>
                       </Link>
                     )}
-                    {/* TODO: Uncomment when brand role auth is set up
-                    <Link to="/brand-dashboard" onClick={() => setIsMobileMenuOpen(false)}>
-                      <Button variant="ghost" className="w-full text-primary hover:bg-primary/10 font-semibold mb-2">
-                        <Building2 size={16} className="mr-2" />
-                        BRAND PORTAL
+                    {isAthlete && (
+                      <Link to="/athlete-dashboard" onClick={() => setIsMobileMenuOpen(false)}>
+                        <Button variant="ghost" className="w-full text-primary hover:bg-primary/10 font-semibold mb-2">
+                          <User size={16} className="mr-2" />
+                          ATHLETE DASHBOARD
+                        </Button>
+                      </Link>
+                    )}
+                    {isBrand && (
+                      <Link to="/brand-dashboard" onClick={() => setIsMobileMenuOpen(false)}>
+                        <Button variant="ghost" className="w-full text-primary hover:bg-primary/10 font-semibold mb-2">
+                          <Building2 size={16} className="mr-2" />
+                          BRAND DASHBOARD
+                        </Button>
+                      </Link>
+                    )}
+                  </SignedIn>
+                  <SignedOut>
+                    <Link to="/athlete-intake" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Button variant="outline" className="w-full border-primary text-primary">
+                        ATHLETE SIGNUP
                       </Button>
                     </Link>
-                    */}
-                  </SignedIn>
-                  <Link to="/athlete-intake" onClick={() => setIsMobileMenuOpen(false)}>
-                    <Button variant="outline" className="w-full border-primary text-primary">
-                      ATHLETE SIGNUP
-                    </Button>
-                  </Link>
-                  <Link to="/brand-intake" onClick={() => setIsMobileMenuOpen(false)}>
-                    <Button className="w-full bg-primary text-primary-foreground font-bold">
-                      BRAND SIGNUP
-                    </Button>
-                  </Link>
+                    <Link to="/brand-intake" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Button className="w-full bg-primary text-primary-foreground font-bold">
+                        BRAND SIGNUP
+                      </Button>
+                    </Link>
+                  </SignedOut>
                 </div>
               </div>
             </motion.div>
