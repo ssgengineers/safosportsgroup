@@ -8,6 +8,8 @@ import com.nil.exception.ResourceNotFoundException;
 import com.nil.repository.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -84,8 +86,11 @@ public class AthleteService {
 
     /**
      * Get athlete profile by ID.
+     * Cached for 10 minutes to reduce database load.
      */
+    @Cacheable(value = "athletes", key = "#id")
     public AthleteProfileResponse getProfile(UUID id) {
+        log.debug("Fetching athlete profile from database: {}", id);
         AthleteProfile profile = athleteProfileRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Athlete profile not found: " + id));
         return mapProfileToResponse(profile);
@@ -106,8 +111,10 @@ public class AthleteService {
 
     /**
      * Update an athlete profile.
+     * Cache is evicted on update to ensure fresh data.
      */
     @Transactional
+    @CacheEvict(value = "athletes", key = "#id")
     public AthleteProfileResponse updateProfile(UUID id, AthleteProfileRequest request) {
         AthleteProfile profile = athleteProfileRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Athlete profile not found: " + id));
@@ -123,8 +130,10 @@ public class AthleteService {
 
     /**
      * Delete an athlete profile.
+     * Cache is evicted on delete.
      */
     @Transactional
+    @CacheEvict(value = "athletes", key = "#id")
     public void deleteProfile(UUID id) {
         if (!athleteProfileRepository.existsById(id)) {
             throw new ResourceNotFoundException("Athlete profile not found: " + id);

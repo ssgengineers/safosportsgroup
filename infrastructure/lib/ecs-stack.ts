@@ -10,11 +10,15 @@ import { Construct } from 'constructs';
 import { VpcStack } from './vpc-stack';
 import { RdsStack } from './rds-stack';
 import { EcrStack } from './ecr-stack';
+import { S3Stack } from './s3-stack';
+import { CacheStack } from './cache-stack';
 
 export interface EcsStackProps extends cdk.StackProps {
   vpcStack: VpcStack;
   rdsStack: RdsStack;
   ecrStack: EcrStack;
+  s3Stack: S3Stack;
+  cacheStack: CacheStack;
 }
 
 export class EcsStack extends cdk.Stack {
@@ -26,7 +30,7 @@ export class EcsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: EcsStackProps) {
     super(scope, id, props);
 
-    const { vpcStack, rdsStack, ecrStack } = props;
+    const { vpcStack, rdsStack, ecrStack, s3Stack, cacheStack } = props;
 
     // Create ECS Cluster
     this.cluster = new ecs.Cluster(this, 'Cluster', {
@@ -64,6 +68,9 @@ export class EcsStack extends cdk.Stack {
       description: 'Role for ECS task to access AWS services',
     });
 
+    // Grant S3 access to task role
+    s3Stack.mediaBucket.grantReadWrite(taskRole);
+
     // Create Task Definition
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDefinition', {
       memoryLimitMiB: 4096, // 4GB
@@ -89,6 +96,12 @@ export class EcsStack extends cdk.Stack {
         DB_PORT: rdsStack.databasePort.toString(),
         DB_NAME: rdsStack.databaseName,
         DB_USERNAME: 'nil_admin',
+        // Redis configuration
+        REDIS_HOST: cacheStack.redisEndpoint,
+        REDIS_PORT: cacheStack.redisPort.toString(),
+        // S3 configuration
+        S3_BUCKET_NAME: s3Stack.mediaBucketName,
+        AWS_REGION: this.region,
       },
       secrets: {
         DB_PASSWORD: ecs.Secret.fromSecretsManager(
