@@ -32,17 +32,20 @@ public class AthleteService {
     private final AthleteMediaRepository mediaRepository;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final ClerkUserService clerkUserService;
 
     public AthleteService(AthleteProfileRepository athleteProfileRepository,
                           AthleteSocialAccountRepository socialAccountRepository,
                           AthleteMediaRepository mediaRepository,
                           UserRepository userRepository,
-                          RoleRepository roleRepository) {
+                          RoleRepository roleRepository,
+                          ClerkUserService clerkUserService) {
         this.athleteProfileRepository = athleteProfileRepository;
         this.socialAccountRepository = socialAccountRepository;
         this.mediaRepository = mediaRepository;
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
+        this.clerkUserService = clerkUserService;
     }
 
     /**
@@ -213,16 +216,38 @@ public class AthleteService {
 
     /**
      * Delete an athlete profile.
+     * Also deletes the user from Clerk and the local database.
      * Cache is evicted on delete.
      */
     @Transactional
     @CacheEvict(value = "athletes", key = "#id")
     public void deleteProfile(UUID id) {
-        if (!athleteProfileRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Athlete profile not found: " + id);
-        }
+        AthleteProfile profile = athleteProfileRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Athlete profile not found: " + id));
+        
+        // Get the user and clerkId before deleting
+        User user = profile.getUser();
+        String clerkId = user != null ? user.getClerkId() : null;
+        
+        // Delete the profile first
         athleteProfileRepository.deleteById(id);
         log.info("Deleted athlete profile: {}", id);
+        
+        // Delete from Clerk if we have a clerkId
+        if (clerkId != null && !clerkId.isEmpty()) {
+            boolean deletedFromClerk = clerkUserService.deleteUserFromClerk(clerkId);
+            if (deletedFromClerk) {
+                log.info("Deleted user from Clerk: {}", clerkId);
+            } else {
+                log.warn("Failed to delete user from Clerk: {}", clerkId);
+            }
+        }
+        
+        // Delete the user from local database if it exists
+        if (user != null) {
+            userRepository.delete(user);
+            log.info("Deleted user from local database: {}", user.getId());
+        }
     }
 
     /**

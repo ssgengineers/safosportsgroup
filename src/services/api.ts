@@ -375,6 +375,26 @@ export async function getAllAthleteProfiles(page?: number, size?: number, token?
 }
 
 /**
+ * Delete athlete profile
+ * @param profileId The ID of the athlete profile to delete
+ * @param token Optional Clerk token for authenticated requests
+ */
+export async function deleteAthleteProfile(profileId: string, token?: string): Promise<void> {
+  const headers = await getAuthHeaders(token);
+  
+  const response = await fetch(`${API_BASE_URL}/athletes/${profileId}`, {
+    method: 'DELETE',
+    headers,
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Failed to delete athlete profile:', response.status, errorText);
+    throw new Error(`Failed to delete athlete profile: ${response.status} ${errorText}`);
+  }
+}
+
+/**
  * Get current user's athlete profile
  * @param token Optional Clerk token for authenticated requests
  */
@@ -471,5 +491,216 @@ export async function updateAthleteProfile(
   }
   
   return response.json();
+}
+
+// ============= Brand Profile Types & Functions =============
+
+export interface BrandProfileResponse {
+  id: string;
+  userId: string;
+  clerkId?: string;
+  companyName?: string;
+  industry?: string;
+  brandCategory?: string;
+  companySize?: string;
+  website?: string;
+  logoUrl?: string;
+  description?: string;
+  contactFirstName?: string;
+  contactLastName?: string;
+  contactTitle?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  fullName?: string;
+  targetAudience?: string;
+  marketingGoals?: string;
+  budgetRange?: string;
+  preferredTimeline?: string;
+  athletePreferences?: string;
+  contentTypesInterested?: string;
+  campaignExamples?: string;
+  minimumBudget?: number;
+  maximumBudget?: number;
+  preferredDealTypes?: string;
+  exclusivityRequirements?: string;
+  isAcceptingApplications?: boolean;
+  preferredSports?: string; // JSON array
+  preferredConferences?: string; // JSON array
+  minFollowers?: string;
+  maxFollowers?: string;
+  interestAlignment?: string; // JSON array
+  contentPreferences?: string; // JSON array
+  budgetPerAthlete?: string;
+  dealDuration?: string;
+  matchingNotes?: string;
+  profileCompletenessScore?: number;
+  completenessScore?: number; // Alias for profileCompletenessScore
+  isActive?: boolean;
+  isVerified?: boolean;
+  status?: string;
+  socialAccounts?: Array<{
+    id: string;
+    platform: string;
+    handle: string;
+    profileUrl?: string;
+    followers?: number;
+  }>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BrandProfileUpdateRequest {
+  companyName?: string;
+  industry?: string;
+  brandCategory?: string;
+  companySize?: string;
+  website?: string;
+  logoUrl?: string;
+  description?: string;
+  contactFirstName?: string;
+  contactLastName?: string;
+  contactTitle?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  targetAudience?: string;
+  marketingGoals?: string;
+  budgetRange?: string;
+  preferredTimeline?: string;
+  athletePreferences?: string;
+  contentTypesInterested?: string;
+  campaignExamples?: string;
+  minimumBudget?: number;
+  maximumBudget?: number;
+  preferredDealTypes?: string;
+  exclusivityRequirements?: string;
+  isAcceptingApplications?: boolean;
+  preferredSports?: string; // JSON array
+  preferredConferences?: string; // JSON array
+  minFollowers?: string;
+  maxFollowers?: string;
+  interestAlignment?: string; // JSON array
+  contentPreferences?: string; // JSON array
+  budgetPerAthlete?: string;
+  dealDuration?: string;
+  matchingNotes?: string;
+  socialAccounts?: Array<{
+    platform: string;
+    handle: string;
+    profileUrl?: string;
+    followers?: number;
+  }>;
+}
+
+/**
+ * Get all brand profiles (admin)
+ */
+export async function getAllBrandProfiles(page?: number, size?: number, token?: string): Promise<PageResponse<BrandProfileResponse>> {
+  const params = new URLSearchParams();
+  if (page !== undefined) params.append('page', page.toString());
+  if (size !== undefined) params.append('size', size.toString());
+  
+  const url = `${API_BASE_URL}/brands${params.toString() ? '?' + params.toString() : ''}`;
+  const headers = await getAuthHeaders(token);
+  
+  const response = await fetch(url, {
+    method: 'GET',
+    headers,
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Failed to fetch brand profiles:', response.status, errorText);
+    throw new Error(`Failed to fetch brand profiles: ${response.status} ${errorText}`);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Get current user's brand profile
+ */
+export async function getMyBrandProfile(token?: string): Promise<BrandProfileResponse> {
+  const headers = await getAuthHeaders(token);
+  const response = await fetch(`${API_BASE_URL}/brands/me`, {
+    method: 'GET',
+    headers,
+  });
+  
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('Brand profile not found');
+    }
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch brand profile' }));
+    throw new Error(error.message || 'Failed to fetch brand profile');
+  }
+  
+  return response.json();
+}
+
+/**
+ * Update brand profile
+ */
+export async function updateBrandProfile(
+  profileId: string,
+  data: BrandProfileUpdateRequest,
+  token?: string
+): Promise<BrandProfileResponse> {
+  const headers = await getAuthHeaders(token);
+  
+  // Transform social accounts to match backend format
+  const requestData: any = { ...data };
+  if (data.socialAccounts) {
+    requestData.socialAccounts = data.socialAccounts.map(acc => ({
+      platform: acc.platform, // Backend will parse this using SocialPlatform.fromString()
+      handle: acc.handle,
+      profileUrl: acc.profileUrl,
+      followerCount: acc.followers || 0, // Backend expects followerCount, not followers
+    }));
+  }
+  
+  console.log("Sending brand profile update request:", requestData);
+  const response = await fetch(`${API_BASE_URL}/brands/${profileId}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(requestData),
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Brand profile update failed:", response.status, errorText);
+    let errorMessage = 'Failed to update brand profile';
+    try {
+      const error = JSON.parse(errorText);
+      errorMessage = error.message || errorMessage;
+    } catch {
+      errorMessage = errorText || errorMessage;
+    }
+    throw new Error(errorMessage);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Delete brand profile
+ * @param profileId The ID of the brand profile to delete
+ * @param token Optional Clerk token for authenticated requests
+ */
+export async function deleteBrandProfile(profileId: string, token?: string): Promise<void> {
+  const headers = await getAuthHeaders(token);
+  
+  const response = await fetch(`${API_BASE_URL}/brands/${profileId}`, {
+    method: 'DELETE',
+    headers,
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Failed to delete brand profile:', response.status, errorText);
+    throw new Error(`Failed to delete brand profile: ${response.status} ${errorText}`);
+  }
 }
 

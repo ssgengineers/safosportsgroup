@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import Navigation from "@/components/layout/Navigation";
-import { getAthleteIntakeRequests, getBrandIntakeRequests, getIntakeStats, updateAthleteRequestStatus, updateBrandRequestStatus, getAllAthleteProfiles, type AthleteIntakeRequestEntity, type BrandIntakeRequestEntity, type AthleteProfileResponse } from "@/services/api";
+import { getAthleteIntakeRequests, getBrandIntakeRequests, getIntakeStats, updateAthleteRequestStatus, updateBrandRequestStatus, getAllAthleteProfiles, getAllBrandProfiles, deleteAthleteProfile, deleteBrandProfile, type AthleteIntakeRequestEntity, type BrandIntakeRequestEntity, type AthleteProfileResponse, type BrandProfileResponse } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,10 @@ import {
   Dumbbell,
   Camera,
   Laugh,
-  Target
+  Target,
+  Trash2,
+  AlertTriangle,
+  Loader2
 } from "lucide-react";
 
 // Enhanced athlete data with full profiles
@@ -520,9 +523,16 @@ const Admin = () => {
   const [athleteRequests, setAthleteRequests] = useState<AthleteIntakeRequestEntity[]>([]);
   const [brandRequests, setBrandRequests] = useState<BrandIntakeRequestEntity[]>([]);
   const [athleteProfiles, setAthleteProfiles] = useState<AthleteProfileResponse[]>([]);
+  const [brandProfiles, setBrandProfiles] = useState<BrandProfileResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState({ athletes: { pending: 0, total: 0 }, brands: { pending: 0, total: 0 } });
   const [isUpdating, setIsUpdating] = useState(false);
+  
+  // Delete confirmation states
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ type: 'athlete' | 'brand', id: string, name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -536,17 +546,22 @@ const Admin = () => {
       setBrandRequests(brandsData.content || []);
       setStats(statsData);
       
-      // Fetch athlete profiles separately with error handling
+      // Fetch athlete and brand profiles separately with error handling
       try {
         const token = await getToken();
-        const profilesData = await getAllAthleteProfiles(0, 100, token || undefined);
-        console.log('Fetched athlete profiles:', profilesData);
-        console.log('Number of profiles:', profilesData.content?.length || 0);
-        setAthleteProfiles(profilesData.content || []);
+        const [athletesData, brandsData] = await Promise.all([
+          getAllAthleteProfiles(0, 100, token || undefined),
+          getAllBrandProfiles(0, 100, token || undefined)
+        ]);
+        console.log('Fetched athlete profiles:', athletesData);
+        console.log('Fetched brand profiles:', brandsData);
+        setAthleteProfiles(athletesData.content || []);
+        setBrandProfiles(brandsData.content || []);
       } catch (profileError) {
-        console.error('Failed to fetch athlete profiles:', profileError);
+        console.error('Failed to fetch profiles:', profileError);
         // Don't show toast for profile fetch errors, just log it
         setAthleteProfiles([]);
+        setBrandProfiles([]);
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -710,6 +725,60 @@ const Admin = () => {
     } finally {
       setIsUpdating(false);
     }
+  };
+
+  // Delete handlers
+  const handleDeleteClick = (type: 'athlete' | 'brand', id: string, name: string) => {
+    setItemToDelete({ type, id, name });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    setDeleteDialogOpen(false);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteFinal = async () => {
+    if (!itemToDelete) return;
+    
+    try {
+      setIsDeleting(true);
+      const token = await getToken();
+      
+      if (itemToDelete.type === 'athlete') {
+        await deleteAthleteProfile(itemToDelete.id, token || undefined);
+        setAthleteProfiles(prev => prev.filter(p => p.id !== itemToDelete.id));
+      } else {
+        await deleteBrandProfile(itemToDelete.id, token || undefined);
+        setBrandProfiles(prev => prev.filter(p => p.id !== itemToDelete.id));
+      }
+      
+      toast({
+        title: "Deleted",
+        description: `${itemToDelete.name} has been permanently deleted.`,
+      });
+      
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
+      
+      // Refresh data
+      await fetchData();
+    } catch (error) {
+      console.error('Failed to delete:', error);
+      toast({
+        title: "Error",
+        description: `Failed to delete ${itemToDelete.name}. Please try again.`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setDeleteConfirmOpen(false);
+    setItemToDelete(null);
   };
 
   const getStatusColor = (status: string) => {
@@ -932,17 +1001,19 @@ const Admin = () => {
                               </div>
                             </div>
 
-                            {/* View Button */}
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => {
-                                // Convert AthleteProfileResponse to Athlete format for the modal
-                                const athlete: Athlete = {
-                                  id: parseInt(profile.id) || 0,
-                                  firstName: profile.firstName || '',
-                                  lastName: profile.lastName || '',
-                                  email: profile.email || profile.user?.email || '',
+                            {/* Actions */}
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // Convert AthleteProfileResponse to Athlete format for the modal
+                                  const athlete: Athlete = {
+                                    id: parseInt(profile.id) || 0,
+                                    firstName: profile.firstName || '',
+                                    lastName: profile.lastName || '',
+                                    email: profile.email || profile.user?.email || '',
                                   phone: '',
                                   location: profile.hometown || '',
                                   dateOfBirth: profile.dateOfBirth || '',
@@ -954,7 +1025,14 @@ const Admin = () => {
                                   conference: profile.conference || '',
                                   teamRanking: '',
                                   performanceLevel: '',
-                                  seasonStats: {},
+                                  seasonStats: {
+                                    gamesPlayed: 0,
+                                    pointsPerGame: 0,
+                                    assistsPerGame: 0,
+                                    reboundsPerGame: 0,
+                                    fieldGoalPct: '0%',
+                                    threePointPct: '0%'
+                                  },
                                   awards: [],
                                   socialAccounts: profile.socialAccounts?.map(acc => ({
                                     platform: acc.platform.toString(),
@@ -967,7 +1045,7 @@ const Admin = () => {
                                   contentTypes: [],
                                   deals: [],
                                   status: profile.isActive ? 'active' : 'inactive',
-                                  joinedAt: profile.createdAt ? new Date(profile.createdAt).toLocaleDateString() : '',
+                                  joinedAt: '',
                                   profileCompleteness: profile.profileCompletenessScore || profile.completenessScore || 0
                                 };
                                 setSelectedAthlete(athlete);
@@ -976,12 +1054,124 @@ const Admin = () => {
                               <Eye size={14} className="mr-1" />
                               View
                             </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteClick('athlete', profile.id, `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || 'Athlete');
+                                }}
+                                className="text-red-500 hover:text-red-600 hover:border-red-500"
+                              >
+                                <Trash2 size={14} className="mr-1" />
+                                Delete
+                              </Button>
+                            </div>
                           </div>
-                        </motion.div>
-                      ))}
-                  </div>
-                )}
-              </TabsContent>
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  {/* Brands Tab */}
+                  <TabsContent value="brands">
+                    {isLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
+                      </div>
+                    ) : brandProfiles.length === 0 ? (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <Building2 size={48} className="mx-auto mb-4 opacity-50" />
+                        <p>No brand profiles found.</p>
+                        <p className="text-sm mt-2">Brands will appear here after they complete sign-up.</p>
+                      </div>
+                    ) : (
+                      <div className="grid gap-4">
+                        {brandProfiles
+                          .filter(profile => {
+                            if (!searchTerm) return true;
+                            const search = searchTerm.toLowerCase();
+                            const name = profile.companyName?.toLowerCase() || '';
+                            const industry = profile.industry?.toLowerCase() || '';
+                            const contact = `${profile.contactFirstName || ''} ${profile.contactLastName || ''}`.toLowerCase();
+                            return name.includes(search) || industry.includes(search) || contact.includes(search);
+                          })
+                          .map((profile) => (
+                            <motion.div
+                              key={profile.id}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              className="bg-card rounded-xl border border-border p-6 hover:border-primary/50 transition-colors cursor-pointer"
+                            >
+                              <div className="flex items-start gap-6">
+                                {/* Profile Image Placeholder */}
+                                <div className="w-20 h-20 rounded-full bg-purple-500/20 border-2 border-purple-500 flex items-center justify-center">
+                                  <Building2 size={32} className="text-purple-500" />
+                                </div>
+                                
+                                {/* Basic Info */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-3 mb-1">
+                                    <h3 className="text-xl font-bold">
+                                      {profile.companyName || 'Unknown Company'}
+                                    </h3>
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      profile.isActive ? 'bg-green-500/20 text-green-500' : 'bg-gray-500/20 text-gray-500'
+                                    }`}>
+                                      {profile.isActive ? <CheckCircle size={12} /> : <Clock size={12} />}
+                                      {profile.isActive ? 'active' : 'inactive'}
+                                    </span>
+                                  </div>
+                                  <p className="text-muted-foreground mb-2">
+                                    {profile.industry || 'N/A'} • {profile.companySize || 'N/A'}
+                                  </p>
+                                  <div className="flex items-center gap-4 text-sm">
+                                    {profile.contactFirstName && profile.contactLastName && (
+                                      <span className="text-muted-foreground">
+                                        Contact: <span className="text-foreground font-semibold">{profile.contactFirstName} {profile.contactLastName}</span>
+                                      </span>
+                                    )}
+                                    {profile.contactEmail && (
+                                      <span className="text-muted-foreground text-xs">
+                                        {profile.contactEmail}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-2">
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedBrand(profile as any);
+                                    }}
+                                  >
+                                    <Eye size={14} className="mr-1" />
+                                    View
+                                  </Button>
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteClick('brand', profile.id, profile.companyName || 'Brand');
+                                    }}
+                                    className="text-red-500 hover:text-red-600 hover:border-red-500"
+                                  >
+                                    <Trash2 size={14} className="mr-1" />
+                                    Delete
+                                  </Button>
+                                </div>
+                              </div>
+                            </motion.div>
+                          ))}
+                      </div>
+                    )}
+                  </TabsContent>
 
               {/* Brands Tab */}
               <TabsContent value="brands">
@@ -1659,6 +1849,81 @@ const Admin = () => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog - First Step */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-500">
+              <AlertTriangle size={20} />
+              Confirm Deletion
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{itemToDelete?.name}</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 justify-end mt-4">
+            <Button variant="outline" onClick={handleDeleteCancel}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteConfirm}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              Yes, Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog - Second Step (Double Confirmation) */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-500">
+              <AlertTriangle size={20} />
+              Final Confirmation Required
+            </DialogTitle>
+            <DialogDescription>
+              This is your last chance to cancel. Deleting <strong>{itemToDelete?.name}</strong> will permanently remove all their data from the system. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-4">
+            <p className="text-sm text-red-600 font-medium">
+              ⚠️ Warning: This will permanently delete:
+            </p>
+            <ul className="text-sm text-muted-foreground mt-2 list-disc list-inside">
+              <li>All profile information</li>
+              <li>Social media accounts</li>
+              <li>Associated data</li>
+            </ul>
+          </div>
+          <div className="flex gap-3 justify-end">
+            <Button variant="outline" onClick={handleDeleteCancel} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteFinal}
+              disabled={isDeleting}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={16} className="mr-2" />
+                  Delete Permanently
+                </>
+              )}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

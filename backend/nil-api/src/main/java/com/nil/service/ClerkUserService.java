@@ -7,7 +7,6 @@ import com.nil.entity.enums.RoleType;
 import com.nil.entity.enums.Sport;
 import com.nil.entity.enums.SocialPlatform;
 import com.nil.repository.*;
-import com.nil.service.AthleteService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,7 +36,7 @@ public class ClerkUserService {
     private final AthleteIntakeRequestRepository athleteIntakeRepo;
     private final BrandIntakeRequestRepository brandIntakeRepo;
     private final AthleteProfileRepository athleteProfileRepo;
-    private final AthleteService athleteService;
+    private final BrandProfileRepository brandProfileRepo;
     private final String clerkSecretKey;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -49,14 +48,14 @@ public class ClerkUserService {
             AthleteIntakeRequestRepository athleteIntakeRepo,
             BrandIntakeRequestRepository brandIntakeRepo,
             AthleteProfileRepository athleteProfileRepo,
-            AthleteService athleteService,
+            BrandProfileRepository brandProfileRepo,
             @Value("${clerk.secret-key:}") String clerkSecretKey) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.athleteIntakeRepo = athleteIntakeRepo;
         this.brandIntakeRepo = brandIntakeRepo;
         this.athleteProfileRepo = athleteProfileRepo;
-        this.athleteService = athleteService;
+        this.brandProfileRepo = brandProfileRepo;
         this.clerkSecretKey = clerkSecretKey;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
@@ -104,8 +103,20 @@ public class ClerkUserService {
                 user.setLastName(lastName);
             }
             
+            User savedUser = userRepository.save(user);
             log.debug("Updated existing user: {} ({})", clerkId, email);
-            return userRepository.save(user);
+            
+            // Check if user has a profile - if not, try to create from intake request
+            // This handles cases where user signed up before intake was approved
+            boolean hasAthleteProfile = athleteProfileRepo.existsByUserId(savedUser.getId());
+            boolean hasBrandProfile = brandProfileRepo.existsByUserId(savedUser.getId());
+            
+            if (!hasAthleteProfile && !hasBrandProfile) {
+                log.info("Existing user {} has no profile. Checking for intake requests...", clerkId);
+                processIntakeRequests(savedUser, email);
+            }
+            
+            return savedUser;
         }
 
         // Create new user
@@ -162,14 +173,15 @@ public class ClerkUserService {
     }
 
     /**
-     * Process intake requests for a newly created user.
+     * Process intake requests for a user.
      * Checks for approved intake requests matching the email and creates profiles.
+     * Can be called for both new and existing users who don't have profiles yet.
      * 
-     * @param user The newly created user
+     * @param user The user (new or existing)
      * @param email The user's email address
      */
     @Transactional
-    private void processIntakeRequests(User user, String email) {
+    public void processIntakeRequests(User user, String email) {
         log.info("Processing intake requests for user: {} with email: {}", user.getClerkId(), email);
         
         // Check for invited/approved athlete intake request
@@ -203,21 +215,31 @@ public class ClerkUserService {
 
         // Check for invited/approved brand intake request
         Optional<BrandIntakeRequest> brandIntake = brandIntakeRepo.findByEmail(email);
-        if (brandIntake.isPresent() && 
-            ("INVITED".equalsIgnoreCase(brandIntake.get().getStatus()) || 
-             "APPROVED".equalsIgnoreCase(brandIntake.get().getStatus()))) {
-            try {
-                assignRole(user.getClerkId(), RoleType.BRAND);
-                
-                // Update intake status to ACCEPTED
-                brandIntake.get().setStatus("ACCEPTED");
-                brandIntakeRepo.save(brandIntake.get());
-                
-                log.info("Assigned BRAND role from intake request for user: {} ({})", user.getClerkId(), email);
-            } catch (Exception e) {
-                log.error("Failed to process brand intake: {}", e.getMessage(), e);
+        if (brandIntake.isPresent()) {
+            BrandIntakeRequest intake = brandIntake.get();
+            String status = intake.getStatus();
+            log.info("Found brand intake request for email: {}, status: {}", email, status);
+            
+            if ("INVITED".equalsIgnoreCase(status) || "APPROVED".equalsIgnoreCase(status)) {
+                try {
+                    log.info("Creating brand profile for user: {} from intake request: {}", user.getClerkId(), intake.getId());
+                    createBrandProfileFromIntake(user, intake);
+                    assignRole(user.getClerkId(), RoleType.BRAND);
+                    
+                    // Update intake status to ACCEPTED
+                    intake.setStatus("ACCEPTED");
+                    brandIntakeRepo.save(intake);
+                    
+                    log.info("Successfully created brand profile from intake request for user: {} ({})", user.getClerkId(), email);
+                } catch (Exception e) {
+                    log.error("Failed to create brand profile from intake for user {}: {}", user.getClerkId(), e.getMessage(), e);
+                }
+                return;
+            } else {
+                log.debug("Brand intake request found but status is '{}', not APPROVED or INVITED. Skipping profile creation.", status);
             }
-            return;
+        } else {
+            log.debug("No brand intake request found for email: {}", email);
         }
 
         // No matching intake request - assign default ATHLETE role
@@ -319,6 +341,97 @@ public class ClerkUserService {
     }
 
     /**
+     * Create a BrandProfile from a BrandIntakeRequest.
+     */
+    @Transactional
+    private void createBrandProfileFromIntake(User user, BrandIntakeRequest intake) {
+        // Check if profile already exists
+        if (brandProfileRepo.existsByUserId(user.getId())) {
+            log.debug("Brand profile already exists for user: {}", user.getClerkId());
+            return;
+        }
+
+        BrandProfile profile = new BrandProfile();
+        profile.setUser(user);
+        
+        // Map company info
+        if (intake.getCompany() != null) {
+            profile.setCompanyName(intake.getCompany());
+        }
+        if (intake.getIndustry() != null) {
+            profile.setIndustry(intake.getIndustry());
+        }
+        if (intake.getCompanySize() != null) {
+            profile.setCompanySize(intake.getCompanySize());
+        }
+        if (intake.getWebsite() != null) {
+            profile.setWebsite(intake.getWebsite());
+        }
+        if (intake.getDescription() != null) {
+            profile.setDescription(intake.getDescription());
+        }
+        
+        // Map contact info
+        if (intake.getContactFirstName() != null) {
+            profile.setContactFirstName(intake.getContactFirstName());
+        }
+        if (intake.getContactLastName() != null) {
+            profile.setContactLastName(intake.getContactLastName());
+        }
+        if (intake.getContactTitle() != null) {
+            profile.setContactTitle(intake.getContactTitle());
+        }
+        if (intake.getEmail() != null) {
+            profile.setContactEmail(intake.getEmail());
+        }
+        if (intake.getPhone() != null) {
+            profile.setContactPhone(intake.getPhone());
+        }
+        
+        // Map marketing info
+        if (intake.getTargetAudience() != null) {
+            profile.setTargetAudience(intake.getTargetAudience());
+        }
+        if (intake.getGoals() != null) {
+            profile.setMarketingGoals(intake.getGoals());
+        }
+        if (intake.getBudget() != null) {
+            profile.setBudgetRange(intake.getBudget());
+        }
+        if (intake.getTimeline() != null) {
+            profile.setPreferredTimeline(intake.getTimeline());
+        }
+        if (intake.getAthletePreferences() != null) {
+            profile.setAthletePreferences(intake.getAthletePreferences());
+        }
+        
+        // Set defaults
+        profile.setIsActive(true);
+        profile.setIsAcceptingApplications(true);
+        profile.setProfileCompletenessScore(calculateInitialBrandCompleteness(profile));
+        
+        brandProfileRepo.save(profile);
+        log.info("Created brand profile from intake request for user: {}", user.getClerkId());
+    }
+
+    /**
+     * Calculate initial brand profile completeness score.
+     */
+    private Integer calculateInitialBrandCompleteness(BrandProfile profile) {
+        int score = 0;
+        if (profile.getCompanyName() != null && !profile.getCompanyName().isEmpty()) score += 15;
+        if (profile.getIndustry() != null && !profile.getIndustry().isEmpty()) score += 15;
+        if (profile.getWebsite() != null && !profile.getWebsite().isEmpty()) score += 10;
+        if (profile.getDescription() != null && !profile.getDescription().isEmpty()) score += 15;
+        if (profile.getContactEmail() != null && !profile.getContactEmail().isEmpty()) score += 10;
+        if (profile.getContactPhone() != null && !profile.getContactPhone().isEmpty()) score += 10;
+        if (profile.getTargetAudience() != null && !profile.getTargetAudience().isEmpty()) score += 10;
+        if (profile.getMarketingGoals() != null && !profile.getMarketingGoals().isEmpty()) score += 10;
+        if (profile.getBudgetRange() != null && !profile.getBudgetRange().isEmpty()) score += 5;
+        return Math.min(score, 100);
+    }
+
+    /**
      * Convert platform string to SocialPlatform enum.
      */
     private SocialPlatform convertToSocialPlatform(String platform) {
@@ -385,6 +498,50 @@ public class ClerkUserService {
         } catch (Exception e) {
             log.error("Error fetching user from Clerk API for {}: {}", clerkId, e.getMessage(), e);
             return null;
+        }
+    }
+
+    /**
+     * Delete a user from Clerk.
+     * 
+     * @param clerkId The Clerk user ID to delete
+     * @return true if successful, false otherwise
+     */
+    public boolean deleteUserFromClerk(String clerkId) {
+        if (clerkSecretKey == null || clerkSecretKey.isEmpty()) {
+            log.warn("Clerk secret key not configured. Skipping deletion from Clerk for: {}", clerkId);
+            return false;
+        }
+
+        if (clerkId == null || clerkId.isEmpty()) {
+            log.warn("Cannot delete user from Clerk: clerkId is null or empty");
+            return false;
+        }
+
+        try {
+            String url = CLERK_API_BASE + "/users/" + clerkId;
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Authorization", "Bearer " + clerkSecretKey)
+                    .header("Content-Type", "application/json")
+                    .DELETE()
+                    .timeout(Duration.ofSeconds(30))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 200 || response.statusCode() == 204) {
+                log.info("Successfully deleted user from Clerk: {}", clerkId);
+                return true;
+            } else {
+                log.error("Failed to delete user from Clerk. Status: {}, Response: {}", 
+                        response.statusCode(), response.body());
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("Error deleting user from Clerk for {}: {}", clerkId, e.getMessage(), e);
+            return false;
         }
     }
 

@@ -4,6 +4,7 @@ import com.nil.dto.UserResponse;
 import com.nil.entity.User;
 import com.nil.exception.ResourceNotFoundException;
 import com.nil.repository.AthleteProfileRepository;
+import com.nil.repository.BrandProfileRepository;
 import com.nil.service.ClerkUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -33,10 +34,12 @@ public class UserController {
 
     private final ClerkUserService clerkUserService;
     private final AthleteProfileRepository athleteProfileRepository;
+    private final BrandProfileRepository brandProfileRepository;
 
-    public UserController(ClerkUserService clerkUserService, AthleteProfileRepository athleteProfileRepository) {
+    public UserController(ClerkUserService clerkUserService, AthleteProfileRepository athleteProfileRepository, BrandProfileRepository brandProfileRepository) {
         this.clerkUserService = clerkUserService;
         this.athleteProfileRepository = athleteProfileRepository;
+        this.brandProfileRepository = brandProfileRepository;
     }
 
     @GetMapping("/me")
@@ -95,6 +98,16 @@ public class UserController {
                 log.warn("Error checking athlete profile existence: {}", e.getMessage());
             }
 
+            // Check if user has brand profile
+            boolean hasBrandProfile = false;
+            try {
+                if (user.getId() != null) {
+                    hasBrandProfile = brandProfileRepository.existsByUserId(user.getId());
+                }
+            } catch (Exception e) {
+                log.warn("Error checking brand profile existence: {}", e.getMessage());
+            }
+
             // Build response with null-safe operations
             List<String> roles = new ArrayList<>();
             try {
@@ -119,7 +132,7 @@ public class UserController {
                     .status(user.getStatus() != null ? user.getStatus() : "ACTIVE")
                     .roles(roles != null ? roles : new ArrayList<>())
                     .hasAthleteProfile(hasAthleteProfile)
-                    .hasBrandProfile(false) // TODO: Implement when BrandProfile exists
+                    .hasBrandProfile(hasBrandProfile)
                     .build();
 
             log.info("Returning user data for clerkId: {}, email: {}, roles: {}", clerkId, user.getEmail(), roles);

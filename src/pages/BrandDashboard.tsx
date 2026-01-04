@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Navigation from "@/components/layout/Navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuth } from "@clerk/clerk-react";
+import { getUserMe, getMyBrandProfile, getAllAthleteProfiles, updateBrandProfile, UserResponse, BrandProfileResponse, AthleteProfileResponse } from "@/services/api";
+import { useToast } from "@/hooks/use-toast";
+import EditBrandProfile from "@/components/EditBrandProfile";
 import { 
   Search,
   Eye,
@@ -62,303 +66,325 @@ import {
   Handshake,
   Loader2,
   Zap,
-  ChevronRight
+  ChevronRight,
+  Twitter,
+  Youtube,
+  Facebook,
+  Linkedin,
+  ExternalLink,
 } from "lucide-react";
 
-// Mock athlete data (same as Admin for consistency)
-const allAthletes = [
-  {
-    id: 1,
-    firstName: "James",
-    lastName: "Wilson",
-    email: "james.w@duke.edu",
-    phone: "(919) 555-0123",
-    location: "Durham, NC",
-    dateOfBirth: "2003-05-12",
-    profileImage: "https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=400&h=400&fit=crop&crop=face",
-    bio: "4-year starter at Duke, team captain for 2 seasons. Passionate about helping young athletes reach their potential through mentorship and creating authentic content that inspires.",
-    sport: "Basketball",
-    position: "Shooting Guard",
-    school: "Duke University",
-    conference: "ACC",
-    teamRanking: "#8 National",
-    performanceLevel: "D1 Elite",
-    seasonStats: {
-      gamesPlayed: 28,
-      pointsPerGame: 18.5,
-      assistsPerGame: 4.2,
-      reboundsPerGame: 3.8,
-    },
-    awards: [
-      "2024 ACC All-Conference First Team",
-      "2023 ACC Tournament MVP",
-      "2x ACC Player of the Week",
-    ],
-    socialAccounts: [
-      { platform: "Instagram", handle: "@jwilson_duke", followers: "125K" },
-      { platform: "TikTok", handle: "@jameswilson", followers: "89K" },
-      { platform: "Twitter/X", handle: "@jwilson2", followers: "45K" }
-    ],
-    totalFollowers: "259K",
-    engagementRate: "4.8%",
-    interestTags: ["Fashion", "Fitness", "Sneakers", "Music", "Mentorship", "Gaming"],
-    contentTypes: ["Reels", "Training Videos", "Lifestyle", "Behind the Scenes"],
-    status: "active",
-  },
-  {
-    id: 2,
-    firstName: "Emma",
-    lastName: "Rodriguez",
-    email: "emma.r@stanford.edu",
-    phone: "(650) 555-0456",
-    location: "Palo Alto, CA",
-    dateOfBirth: "2004-02-28",
-    profileImage: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop&crop=face",
-    bio: "Stanford Soccer standout and aspiring sports broadcaster. I love connecting with fans through authentic storytelling.",
-    sport: "Soccer",
-    position: "Forward",
-    school: "Stanford University",
-    conference: "Pac-12",
-    teamRanking: "#3 National",
-    performanceLevel: "D1 Elite",
-    seasonStats: {
-      gamesPlayed: 22,
-      goals: 15,
-      assists: 8,
-      shotsOnGoal: 42,
-    },
-    awards: [
-      "2024 Pac-12 Offensive Player of the Year",
-      "2023 All-American Third Team",
-      "Stanford Female Athlete of the Year",
-    ],
-    socialAccounts: [
-      { platform: "TikTok", handle: "@emmagoals", followers: "156K" },
-      { platform: "Instagram", handle: "@emma_rodriguez", followers: "98K" },
-      { platform: "YouTube", handle: "Emma Rodriguez", followers: "23K" }
-    ],
-    totalFollowers: "277K",
-    engagementRate: "6.2%",
-    interestTags: ["Travel", "Fashion", "Wellness", "Food", "Sustainability", "Women in Sports"],
-    contentTypes: ["Vlogs", "Lifestyle", "Training", "Day in the Life"],
-    status: "active",
-  },
-  {
-    id: 3,
-    firstName: "Marcus",
-    lastName: "Thompson",
-    email: "marcus.t@ohiostate.edu",
-    phone: "(614) 555-0789",
-    location: "Columbus, OH",
-    dateOfBirth: "2002-09-15",
-    profileImage: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&crop=face",
-    bio: "Ohio State QB1. Faith, family, football. I'm passionate about using my platform to inspire the next generation.",
-    sport: "Football",
-    position: "Quarterback",
-    school: "Ohio State University",
-    conference: "Big Ten",
-    teamRanking: "#4 National",
-    performanceLevel: "D1 Elite",
-    seasonStats: {
-      gamesPlayed: 12,
-      passingYards: 3245,
-      touchdowns: 32,
-      completionPct: "68.4%",
-    },
-    awards: [
-      "2024 Big Ten Offensive Player of the Year",
-      "Heisman Trophy Finalist",
-      "2x Big Ten Player of the Week",
-    ],
-    socialAccounts: [
-      { platform: "Instagram", handle: "@mthompson_qb1", followers: "385K" },
-      { platform: "TikTok", handle: "@marcusqb", followers: "220K" },
-      { platform: "Twitter/X", handle: "@MarcusT_OSU", followers: "156K" },
-    ],
-    totalFollowers: "806K",
-    engagementRate: "5.1%",
-    interestTags: ["Gaming", "Sneakers", "Faith", "Community Service", "Fashion", "Cars"],
-    contentTypes: ["Reels", "Gaming Streams", "Training", "Lifestyle", "Comedy"],
-    status: "active",
-  },
-  {
-    id: 4,
-    firstName: "Sophia",
-    lastName: "Chen",
-    email: "sophia.c@usc.edu",
-    phone: "(213) 555-0321",
-    location: "Los Angeles, CA",
-    dateOfBirth: "2003-11-08",
-    profileImage: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&h=400&fit=crop&crop=face",
-    bio: "USC Volleyball star. Combining athletic excellence with academic achievement. Love creating fitness content!",
-    sport: "Volleyball",
-    position: "Outside Hitter",
-    school: "USC",
-    conference: "Pac-12",
-    teamRanking: "#5 National",
-    performanceLevel: "D1 Elite",
-    seasonStats: {
-      gamesPlayed: 30,
-      kills: 420,
-      digs: 180,
-      aces: 45,
-    },
-    awards: [
-      "2024 Pac-12 Player of the Year",
-      "All-American First Team",
-    ],
-    socialAccounts: [
-      { platform: "Instagram", handle: "@sophiaspikes", followers: "95K" },
-      { platform: "TikTok", handle: "@sophiachen", followers: "142K" },
-    ],
-    totalFollowers: "237K",
-    engagementRate: "7.3%",
-    interestTags: ["Fitness", "Health", "Beauty", "Fashion", "Academics", "Travel"],
-    contentTypes: ["Workout Videos", "Get Ready With Me", "Day in the Life", "Study Tips"],
-    status: "active",
-  },
-  {
-    id: 5,
-    firstName: "Tyler",
-    lastName: "Brooks",
-    email: "tyler.b@clemson.edu",
-    phone: "(864) 555-0654",
-    location: "Clemson, SC",
-    dateOfBirth: "2002-06-20",
-    profileImage: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop&crop=face",
-    bio: "Clemson Baseball pitcher. 95+ MPH fastball. Passionate about hunting, fishing, and the outdoors.",
-    sport: "Baseball",
-    position: "Pitcher",
-    school: "Clemson University",
-    conference: "ACC",
-    teamRanking: "#12 National",
-    performanceLevel: "D1 Elite",
-    seasonStats: {
-      gamesPlayed: 18,
-      strikeouts: 156,
-      era: "2.45",
-      wins: 11,
-    },
-    awards: [
-      "2024 ACC Pitcher of the Year",
-      "Golden Spikes Award Semifinalist",
-    ],
-    socialAccounts: [
-      { platform: "Instagram", handle: "@tylerbrooks_33", followers: "67K" },
-      { platform: "YouTube", handle: "Tyler Brooks Outdoors", followers: "23K" },
-    ],
-    totalFollowers: "90K",
-    engagementRate: "5.8%",
-    interestTags: ["Outdoors", "Hunting", "Fishing", "Country Music", "Trucks", "Faith"],
-    contentTypes: ["Pitching Tutorials", "Outdoor Adventures", "Lifestyle"],
-    status: "active",
-  },
-];
-
-// Mock brand profile data
-const mockBrandProfile = {
-  company: "FitFuel Nutrition",
-  contactFirstName: "Jennifer",
-  contactLastName: "Martinez",
-  contactTitle: "Marketing Director",
-  email: "jennifer@fitfuel.com",
-  phone: "(555) 123-4567",
-  website: "https://fitfuel.com",
-  industry: "Sports & Fitness",
-  companySize: "Medium (51-200 employees)",
-  budget: "$50,000 - $100,000",
-  description: "Premium sports nutrition brand focused on clean, effective supplements for athletes.",
-  targetAudience: "College athletes, fitness enthusiasts, health-conscious individuals aged 18-35",
-  logo: null,
+// Type for athlete display in the UI
+type Athlete = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  dateOfBirth?: string;
+  profileImage?: string;
+  bio?: string;
+  sport?: string;
+  position?: string;
+  school: string;
+  conference?: string;
+  teamRanking?: string;
+  performanceLevel?: string;
+  seasonStats: Record<string, any>;
+  awards: string[];
+  socialAccounts: Array<{
+    platform: string;
+    handle: string;
+    followers: string | number;
+  }>;
+  totalFollowers: string;
+  engagementRate?: string;
+  interestTags: string[];
+  contentTypes: string[];
+  status: string;
 };
-
-// Mock brand preferences for AI matching
-const mockBrandPreferences = {
-  preferredSports: ["Football", "Basketball", "Soccer"],
-  minFollowers: "50K",
-  maxFollowers: "500K",
-  preferredConferences: ["ACC", "Big Ten", "SEC", "Pac-12"],
-  interestAlignment: ["Fitness", "Health", "Wellness", "Training"],
-  contentPreferences: ["Training Videos", "Lifestyle", "Product Reviews"],
-  budgetPerAthlete: "$5,000 - $15,000",
-  dealDuration: "3-6 months",
-  notes: "Looking for athletes who embody a healthy, active lifestyle and have authentic engagement with their audience.",
-};
-
-// Mock active campaigns/deals
-const mockCampaigns = [
-  {
-    id: 1,
-    athleteName: "James Wilson",
-    athleteImage: "https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=400&h=400&fit=crop&crop=face",
-    dealType: "Sponsored Content",
-    value: "$8,000",
-    status: "active",
-    startDate: "2024-11-01",
-    endDate: "2025-02-01",
-    deliverables: ["4 Instagram posts", "2 TikTok videos", "Story features"],
-    progress: 65,
-  },
-  {
-    id: 2,
-    athleteName: "Emma Rodriguez",
-    athleteImage: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop&crop=face",
-    dealType: "Ambassador",
-    value: "$15,000",
-    status: "pending",
-    startDate: "2025-01-15",
-    endDate: "2025-07-15",
-    deliverables: ["Monthly content", "Product features", "Event appearance"],
-    progress: 0,
-  },
-];
-
-type Athlete = typeof allAthletes[0];
 
 const BrandDashboard = () => {
+  const { toast } = useToast();
+  const { getToken, isLoaded } = useAuth();
+  const [user, setUser] = useState<UserResponse | null>(null);
+  const [brandProfile, setBrandProfile] = useState<BrandProfileResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
   const [activeTab, setActiveTab] = useState("overview");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
-  const [bookmarkedAthletes, setBookmarkedAthletes] = useState<number[]>([1, 2]); // Mock some bookmarked
+  const [bookmarkedAthletes, setBookmarkedAthletes] = useState<string[]>([]);
   const [showContactModal, setShowContactModal] = useState(false);
   const [contactAthlete, setContactAthlete] = useState<Athlete | null>(null);
+  
+  // Real athlete data from database
+  const [allAthletes, setAllAthletes] = useState<Athlete[]>([]);
+  const [athletesLoading, setAthletesLoading] = useState(false);
   
   // Filter states
   const [sportFilter, setSportFilter] = useState<string>("all");
   const [conferenceFilter, setConferenceFilter] = useState<string>("all");
   const [followerFilter, setFollowerFilter] = useState<string>("all");
 
-  // Profile editing state
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileData, setProfileData] = useState(mockBrandProfile);
-  
   // Preferences editing state
   const [isEditingPreferences, setIsEditingPreferences] = useState(false);
-  const [preferencesData, setPreferencesData] = useState(mockBrandPreferences);
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  const [preferencesData, setPreferencesData] = useState({
+    preferredSports: [] as string[],
+    minFollowers: "",
+    maxFollowers: "",
+    preferredConferences: [] as string[],
+    interestAlignment: [] as string[],
+    contentPreferences: [] as string[],
+    budgetPerAthlete: "",
+    dealDuration: "",
+    notes: "",
+  });
 
   // AI Search state
   const [showAISearchModal, setShowAISearchModal] = useState(false);
   const [isAISearching, setIsAISearching] = useState(false);
   const [aiSearchResults, setAISearchResults] = useState<Array<Athlete & { matchScore: number; matchReasons: string[] }>>([]);
 
-  // AI Matching function - calculates match score based on brand preferences
+  // Helper function to map API response to UI format
+  const mapAthleteProfileToUI = (profile: AthleteProfileResponse): Athlete => {
+    const totalFollowers = profile.socialAccounts?.reduce((sum, acc) => sum + (acc.followers || 0), 0) || 0;
+    const followersFormatted = totalFollowers >= 1000 
+      ? `${(totalFollowers / 1000).toFixed(0)}K` 
+      : totalFollowers.toString();
+    
+    // Parse awards from string if needed
+    let awards: string[] = [];
+    if (profile.awards) {
+      try {
+        awards = typeof profile.awards === 'string' 
+          ? profile.awards.split('\n').filter(a => a.trim())
+          : [];
+      } catch {
+        awards = [];
+      }
+    }
+
+    // Parse stats summary if available
+    const seasonStats: Record<string, any> = {};
+    if (profile.statsSummary) {
+      try {
+        const stats = JSON.parse(profile.statsSummary);
+        Object.assign(seasonStats, stats);
+      } catch {
+        // If not JSON, try to parse as text
+        seasonStats.summary = profile.statsSummary;
+      }
+    }
+
+    return {
+      id: profile.id,
+      firstName: profile.firstName || profile.user?.firstName || "Unknown",
+      lastName: profile.lastName || profile.user?.lastName || "",
+      email: profile.email || profile.user?.email,
+      location: profile.hometown ? `${profile.hometown}${profile.homeState ? `, ${profile.homeState}` : ''}` : undefined,
+      dateOfBirth: profile.dateOfBirth,
+      bio: profile.bio,
+      sport: profile.sport?.toString() || "N/A",
+      position: profile.position || "N/A",
+      school: profile.schoolName || "Unknown",
+      conference: profile.conference?.toString(),
+      teamRanking: profile.teamRanking ? `#${profile.teamRanking} National` : undefined,
+      performanceLevel: "D1 Elite", // Default, could be enhanced
+      seasonStats,
+      awards,
+      socialAccounts: profile.socialAccounts?.map(acc => ({
+        platform: acc.platform?.toString() || "Unknown",
+        handle: acc.handle || "",
+        followers: acc.followers ? (acc.followers >= 1000 ? `${(acc.followers / 1000).toFixed(0)}K` : acc.followers.toString()) : "0"
+      })) || [],
+      totalFollowers: followersFormatted,
+      engagementRate: totalFollowers > 0 ? "4.5%" : undefined, // Default, could be calculated if we have engagement data
+      interestTags: [], // Not in current API response
+      contentTypes: [], // Not in current API response
+      status: profile.isActive ? "active" : "inactive",
+    };
+  };
+
+  const fetchAthletes = async () => {
+    if (!authToken) {
+      console.log("No auth token available, skipping athlete fetch");
+      return;
+    }
+    
+    setAthletesLoading(true);
+    try {
+      console.log("Fetching athletes with token:", authToken.substring(0, 20) + "...");
+      const response = await getAllAthleteProfiles(0, 100, authToken);
+      console.log("Athletes API response:", response);
+      console.log("Number of athletes received:", response.content?.length || 0);
+      
+      if (!response.content || response.content.length === 0) {
+        console.log("No athletes found in response");
+        setAllAthletes([]);
+        return;
+      }
+      
+      const mappedAthletes = response.content.map(mapAthleteProfileToUI);
+      console.log("Mapped athletes:", mappedAthletes.length);
+      setAllAthletes(mappedAthletes);
+    } catch (error) {
+      console.error("Failed to fetch athletes:", error);
+      console.error("Error details:", error instanceof Error ? error.message : String(error));
+      toast({
+        title: "Failed to load athletes",
+        description: error instanceof Error ? error.message : "Could not fetch athlete profiles. Please try again later.",
+        variant: "destructive",
+      });
+      setAllAthletes([]);
+    } finally {
+      setAthletesLoading(false);
+    }
+  };
+
+  const fetchData = async () => {
+    if (!isLoaded) return;
+    
+    try {
+      const token = await getToken();
+      setAuthToken(token);
+      if (!token) {
+        setError("No authentication token found");
+        setLoading(false);
+        return;
+      }
+
+      // Fetch user data
+      const userData = await getUserMe(token);
+      setUser(userData);
+
+      // Try to fetch brand profile
+      if (userData.hasBrandProfile || userData.roles.includes("BRAND")) {
+        try {
+          const profile = await getMyBrandProfile(token);
+          setBrandProfile(profile);
+          
+          // Load preferences from database
+          if (profile) {
+            try {
+              const preferredSports = profile.preferredSports ? JSON.parse(profile.preferredSports) : [];
+              const preferredConferences = profile.preferredConferences ? JSON.parse(profile.preferredConferences) : [];
+              const interestAlignment = profile.interestAlignment ? JSON.parse(profile.interestAlignment) : [];
+              const contentPreferences = profile.contentPreferences ? JSON.parse(profile.contentPreferences) : [];
+              
+              setPreferencesData({
+                preferredSports: Array.isArray(preferredSports) ? preferredSports : [],
+                minFollowers: profile.minFollowers || "",
+                maxFollowers: profile.maxFollowers || "",
+                preferredConferences: Array.isArray(preferredConferences) ? preferredConferences : [],
+                interestAlignment: Array.isArray(interestAlignment) ? interestAlignment : [],
+                contentPreferences: Array.isArray(contentPreferences) ? contentPreferences : [],
+                budgetPerAthlete: profile.budgetPerAthlete || "",
+                dealDuration: profile.dealDuration || "",
+                notes: profile.matchingNotes || "",
+              });
+            } catch (parseError) {
+              console.error("Failed to parse preferences from database:", parseError);
+              // Keep default empty state if parsing fails
+            }
+          }
+        } catch (profileError) {
+          console.error("Failed to fetch brand profile:", profileError);
+          if (profileError instanceof Error && !profileError.message.includes('not found')) {
+            setError(profileError.message);
+          }
+        }
+      }
+
+      // Fetch athletes after token is set
+      // Note: fetchAthletes uses authToken from state, so we need to wait for it to be set
+      // We'll fetch athletes in the useEffect below
+    } catch (error) {
+      console.error("Failed to fetch data:", error);
+      setError(error instanceof Error ? error.message : "Failed to load dashboard");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [isLoaded, getToken]);
+
+  // Fetch athletes when auth token is available and user/brand profile are loaded
+  useEffect(() => {
+    if (authToken && !loading && user && brandProfile) {
+      console.log("Auth token available, fetching athletes...");
+      fetchAthletes();
+    }
+  }, [authToken, loading, user, brandProfile]);
+
+  // Save preferences to database
+  const handleSavePreferences = async () => {
+    if (!brandProfile || !authToken) {
+      toast({
+        title: "Error",
+        description: "Unable to save preferences. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingPreferences(true);
+    try {
+      await updateBrandProfile(brandProfile.id, {
+        preferredSports: JSON.stringify(preferencesData.preferredSports),
+        preferredConferences: JSON.stringify(preferencesData.preferredConferences),
+        minFollowers: preferencesData.minFollowers,
+        maxFollowers: preferencesData.maxFollowers,
+        interestAlignment: JSON.stringify(preferencesData.interestAlignment),
+        contentPreferences: JSON.stringify(preferencesData.contentPreferences),
+        budgetPerAthlete: preferencesData.budgetPerAthlete,
+        dealDuration: preferencesData.dealDuration,
+        matchingNotes: preferencesData.notes,
+      }, authToken);
+
+      // Refresh brand profile to get updated data
+      const updatedProfile = await getMyBrandProfile(authToken);
+      setBrandProfile(updatedProfile);
+
+      setIsEditingPreferences(false);
+      toast({
+        title: "Preferences Saved",
+        description: "Your AI matching preferences have been saved successfully.",
+      });
+    } catch (error) {
+      console.error("Failed to save preferences:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save preferences. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  };
+
+  // AI Matching function
   const calculateMatchScore = (athlete: Athlete, prefs: typeof preferencesData): { score: number; reasons: string[] } => {
     let score = 0;
     const reasons: string[] = [];
 
-    // Sport match: +25 points
     if (prefs.preferredSports.some(s => s.toLowerCase() === athlete.sport.toLowerCase())) {
       score += 25;
       reasons.push(`Sport match: ${athlete.sport}`);
     }
 
-    // Conference match: +15 points
     if (prefs.preferredConferences.some(c => c.toLowerCase() === athlete.conference.toLowerCase())) {
       score += 15;
       reasons.push(`Conference: ${athlete.conference}`);
     }
 
-    // Follower range check: +20 points
     const athleteFollowers = parseInt(athlete.totalFollowers.replace(/[^0-9]/g, "")) * 1000;
     const minFollowers = parseInt(prefs.minFollowers.replace(/[^0-9]/g, "")) * 1000;
     const maxFollowers = parseInt(prefs.maxFollowers.replace(/[^0-9]/g, "")) * 1000;
@@ -367,7 +393,6 @@ const BrandDashboard = () => {
       reasons.push(`Followers in range: ${athlete.totalFollowers}`);
     }
 
-    // Interest alignment: up to +25 points
     const interestMatches = athlete.interestTags.filter(tag =>
       prefs.interestAlignment.some(interest => 
         tag.toLowerCase().includes(interest.toLowerCase()) || 
@@ -380,7 +405,6 @@ const BrandDashboard = () => {
       reasons.push(`Interest alignment: ${interestMatches.slice(0, 3).join(", ")}`);
     }
 
-    // Content type match: up to +15 points
     const contentMatches = athlete.contentTypes.filter(type =>
       prefs.contentPreferences.some(pref => 
         type.toLowerCase().includes(pref.toLowerCase()) || 
@@ -396,15 +420,12 @@ const BrandDashboard = () => {
     return { score: Math.min(score, 100), reasons };
   };
 
-  // Run AI Search
   const runAISearch = () => {
     setShowAISearchModal(true);
     setIsAISearching(true);
     setAISearchResults([]);
 
-    // Simulate AI processing delay
     setTimeout(() => {
-      // Calculate scores for all athletes
       const scoredAthletes = allAthletes.map(athlete => {
         const { score, reasons } = calculateMatchScore(athlete, preferencesData);
         return {
@@ -414,15 +435,13 @@ const BrandDashboard = () => {
         };
       });
 
-      // Sort by score descending
       scoredAthletes.sort((a, b) => b.matchScore - a.matchScore);
-
       setAISearchResults(scoredAthletes);
       setIsAISearching(false);
-    }, 2000); // 2 second delay to simulate AI processing
+    }, 2000);
   };
 
-  const toggleBookmark = (athleteId: number) => {
+  const toggleBookmark = (athleteId: string) => {
     setBookmarkedAthletes(prev => 
       prev.includes(athleteId) 
         ? prev.filter(id => id !== athleteId)
@@ -430,9 +449,8 @@ const BrandDashboard = () => {
     );
   };
 
-  const isBookmarked = (athleteId: number) => bookmarkedAthletes.includes(athleteId);
+  const isBookmarked = (athleteId: string) => bookmarkedAthletes.includes(athleteId);
 
-  // Filter athletes based on search and filters
   const filteredAthletes = allAthletes.filter(athlete => {
     const matchesSearch = 
       `${athlete.firstName} ${athlete.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -455,6 +473,9 @@ const BrandDashboard = () => {
   });
 
   const bookmarkedAthletesList = allAthletes.filter(a => bookmarkedAthletes.includes(a.id));
+  
+  // Mock campaigns - will be replaced with real data later
+  const mockCampaigns: any[] = [];
 
   const getTagIcon = (tag: string) => {
     const tagLower = tag.toLowerCase();
@@ -477,15 +498,56 @@ const BrandDashboard = () => {
     }
   };
 
+  const getSocialIcon = (platform: string) => {
+    const platformLower = platform.toLowerCase();
+    if (platformLower.includes('instagram')) return <Instagram size={16} className="text-pink-500" />;
+    if (platformLower.includes('twitter') || platformLower.includes('x')) return <Twitter size={16} className="text-blue-400" />;
+    if (platformLower.includes('youtube')) return <Youtube size={16} className="text-red-500" />;
+    if (platformLower.includes('facebook')) return <Facebook size={16} className="text-blue-600" />;
+    if (platformLower.includes('linkedin')) return <Linkedin size={16} className="text-blue-700" />;
+    return <Users size={16} />;
+  };
+
   const uniqueSports = [...new Set(allAthletes.map(a => a.sport))];
   const uniqueConferences = [...new Set(allAthletes.map(a => a.conference))];
 
   const stats = [
     { label: "Total Athletes", value: allAthletes.length, icon: Users, color: "text-blue-500" },
     { label: "Bookmarked", value: bookmarkedAthletes.length, icon: BookmarkCheck, color: "text-primary" },
-    { label: "Active Campaigns", value: mockCampaigns.filter(c => c.status === "active").length, icon: Handshake, color: "text-green-500" },
-    { label: "Pending Deals", value: mockCampaigns.filter(c => c.status === "pending").length, icon: Clock, color: "text-yellow-500" },
+    { label: "Active Campaigns", value: 0, icon: Handshake, color: "text-green-500" },
+    { label: "Pending Deals", value: 0, icon: Clock, color: "text-yellow-500" },
   ];
+
+  if (!isLoaded || loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !user || !brandProfile) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="flex flex-col items-center justify-center min-h-screen text-center p-4">
+          <div className="max-w-md mx-auto space-y-4">
+            <h1 className="text-2xl font-bold text-red-500 mb-4">Profile Not Found</h1>
+            <p className="text-foreground mb-2">It looks like your brand profile hasn't been fully set up yet.</p>
+            <p className="text-muted-foreground text-sm mb-4">
+              Your account has the BRAND role, but no profile was created.
+            </p>
+            <div className="flex gap-2 justify-center">
+              <Button onClick={() => window.location.reload()} variant="outline">Refresh</Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -501,14 +563,14 @@ const BrandDashboard = () => {
           >
             <div className="flex items-center gap-4 mb-2">
               <div className="w-14 h-14 rounded-xl bg-primary/20 flex items-center justify-center text-primary text-xl font-bold">
-                {profileData.company[0]}
+                {brandProfile.companyName?.[0]?.toUpperCase() || "B"}
               </div>
               <div>
                 <h1 className="text-3xl md:text-4xl font-black tracking-wider">
-                  {profileData.company.toUpperCase()}
+                  {brandProfile.companyName?.toUpperCase() || "BRAND DASHBOARD"}
                 </h1>
                 <p className="text-muted-foreground">
-                  Welcome back, {profileData.contactFirstName}
+                  Welcome back, {brandProfile.contactFirstName || user.firstName || "Brand"}
                 </p>
               </div>
             </div>
@@ -575,7 +637,6 @@ const BrandDashboard = () => {
               <TabsContent value="overview" className="space-y-6">
                 {/* AI Search CTA */}
                 <div className="bg-gradient-to-br from-primary/20 via-primary/10 to-card p-8 rounded-xl border border-primary/30 relative overflow-hidden">
-                  {/* Background decoration */}
                   <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
                   <div className="absolute bottom-0 left-0 w-48 h-48 bg-primary/5 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2" />
                   
@@ -618,16 +679,26 @@ const BrandDashboard = () => {
                     <div className="mt-6 pt-6 border-t border-primary/20">
                       <p className="text-xs text-muted-foreground mb-2">Current search criteria:</p>
                       <div className="flex flex-wrap gap-2">
-                        {preferencesData.preferredSports.map((sport, i) => (
-                          <Badge key={i} variant="secondary" className="text-xs bg-background/50">{sport}</Badge>
-                        ))}
-                        <Badge variant="secondary" className="text-xs bg-background/50">{preferencesData.minFollowers} - {preferencesData.maxFollowers} followers</Badge>
-                        {preferencesData.interestAlignment.slice(0, 2).map((interest, i) => (
-                          <Badge key={i} variant="secondary" className="text-xs bg-background/50">{interest}</Badge>
-                        ))}
-                        {preferencesData.interestAlignment.length > 2 && (
-                          <Badge variant="outline" className="text-xs">+{preferencesData.interestAlignment.length - 2} more</Badge>
+                        {preferencesData.preferredSports.length > 0 ? (
+                          preferencesData.preferredSports.map((sport, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs bg-background/50">{sport}</Badge>
+                          ))
+                        ) : (
+                          <Badge variant="secondary" className="text-xs bg-background/50">No sports selected</Badge>
                         )}
+                        {preferencesData.minFollowers && preferencesData.maxFollowers ? (
+                          <Badge variant="secondary" className="text-xs bg-background/50">{preferencesData.minFollowers} - {preferencesData.maxFollowers} followers</Badge>
+                        ) : null}
+                        {preferencesData.interestAlignment.length > 0 ? (
+                          <>
+                            {preferencesData.interestAlignment.slice(0, 2).map((interest, i) => (
+                              <Badge key={i} variant="secondary" className="text-xs bg-background/50">{interest}</Badge>
+                            ))}
+                            {preferencesData.interestAlignment.length > 2 && (
+                              <Badge variant="outline" className="text-xs">+{preferencesData.interestAlignment.length - 2} more</Badge>
+                            )}
+                          </>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -643,11 +714,9 @@ const BrandDashboard = () => {
                     <div className="space-y-4">
                       {mockCampaigns.filter(c => c.status === "active").map((campaign) => (
                         <div key={campaign.id} className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-                          <img
-                            src={campaign.athleteImage}
-                            alt={campaign.athleteName}
-                            className="w-14 h-14 rounded-full object-cover border-2 border-green-500/30"
-                          />
+                          <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-primary text-lg font-bold border-2 border-green-500/30">
+                            {campaign.athleteName?.[0]}
+                          </div>
                           <div className="flex-1">
                             <h4 className="font-semibold">{campaign.athleteName}</h4>
                             <p className="text-sm text-muted-foreground">{campaign.dealType} • {campaign.value}</p>
@@ -701,7 +770,6 @@ const BrandDashboard = () => {
 
               {/* Find Athletes Tab */}
               <TabsContent value="search" className="space-y-6">
-                {/* Search & Filters */}
                 <div className="bg-card p-6 rounded-xl border border-border space-y-4">
                   <div className="relative">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
@@ -754,9 +822,13 @@ const BrandDashboard = () => {
                   </div>
                 </div>
 
-                {/* Results */}
                 <div className="grid gap-4">
-                  {filteredAthletes.length > 0 ? (
+                  {athletesLoading ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Loader2 size={48} className="mx-auto mb-4 opacity-50 animate-spin" />
+                      <p>Loading athletes...</p>
+                    </div>
+                  ) : filteredAthletes.length > 0 ? (
                     filteredAthletes.map((athlete) => (
                       <motion.div
                         key={athlete.id}
@@ -765,12 +837,12 @@ const BrandDashboard = () => {
                         className="bg-card rounded-xl border border-border p-6 hover:border-primary/50 transition-colors"
                       >
                         <div className="flex items-start gap-6">
-                          <img
-                            src={athlete.profileImage}
-                            alt={`${athlete.firstName} ${athlete.lastName}`}
-                            className="w-20 h-20 rounded-full object-cover border-2 border-primary/30 cursor-pointer hover:border-primary transition-colors"
+                          <div 
+                            className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center text-primary text-2xl font-bold border-2 border-primary/30 cursor-pointer hover:border-primary transition-colors"
                             onClick={() => setSelectedAthlete(athlete)}
-                          />
+                          >
+                            {athlete.firstName?.[0]}{athlete.lastName?.[0]}
+                          </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-3 mb-1">
                               <h3 
@@ -793,18 +865,21 @@ const BrandDashboard = () => {
                             </div>
                           </div>
 
-                          <div className="hidden lg:flex flex-wrap gap-1 max-w-xs">
-                            {athlete.interestTags.slice(0, 4).map((tag, i) => (
-                              <Badge key={i} variant="secondary" className="text-xs">
-                                {tag}
-                              </Badge>
-                            ))}
-                            {athlete.interestTags.length > 4 && (
-                              <Badge variant="outline" className="text-xs">
-                                +{athlete.interestTags.length - 4}
-                              </Badge>
-                            )}
-                          </div>
+                          {athlete.socialAccounts && athlete.socialAccounts.length > 0 && (
+                            <div className="hidden lg:flex flex-wrap gap-1 max-w-xs">
+                              {athlete.socialAccounts.slice(0, 3).map((acc, i) => (
+                                <Badge key={i} variant="secondary" className="text-xs">
+                                  {getSocialIcon(acc.platform)}
+                                  <span className="ml-1">{acc.platform}</span>
+                                </Badge>
+                              ))}
+                              {athlete.socialAccounts.length > 3 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{athlete.socialAccounts.length - 3} more
+                                </Badge>
+                              )}
+                            </div>
+                          )}
 
                           <div className="flex items-center gap-2">
                             <Button
@@ -823,10 +898,18 @@ const BrandDashboard = () => {
                         </div>
                       </motion.div>
                     ))
+                  ) : allAthletes.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <UserSearch size={48} className="mx-auto mb-4 opacity-50" />
+                      <p className="text-lg font-semibold mb-2">No athletes available</p>
+                      <p className="text-sm">There are currently no athlete profiles in the system.</p>
+                      <p className="text-sm mt-2">Athletes will appear here once they complete their sign-up and profile creation.</p>
+                    </div>
                   ) : (
                     <div className="text-center py-12 text-muted-foreground">
                       <UserSearch size={48} className="mx-auto mb-4 opacity-50" />
-                      <p>No athletes found matching your criteria</p>
+                      <p>No athletes found matching your search criteria</p>
+                      <p className="text-sm mt-2">Try adjusting your filters or search terms</p>
                     </div>
                   )}
                 </div>
@@ -844,12 +927,12 @@ const BrandDashboard = () => {
                         className="bg-card rounded-xl border border-border p-6 hover:border-primary/50 transition-colors"
                       >
                         <div className="flex items-start gap-6">
-                          <img
-                            src={athlete.profileImage}
-                            alt={`${athlete.firstName} ${athlete.lastName}`}
-                            className="w-20 h-20 rounded-full object-cover border-2 border-primary cursor-pointer"
+                          <div 
+                            className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center text-primary text-2xl font-bold border-2 border-primary cursor-pointer"
                             onClick={() => setSelectedAthlete(athlete)}
-                          />
+                          >
+                            {athlete.firstName?.[0]}{athlete.lastName?.[0]}
+                          </div>
                           <div className="flex-1 min-w-0">
                             <h3 
                               className="text-xl font-bold cursor-pointer hover:text-primary transition-colors"
@@ -864,9 +947,11 @@ const BrandDashboard = () => {
                               <span className="text-muted-foreground">
                                 <span className="text-foreground font-semibold">{athlete.totalFollowers}</span> followers
                               </span>
-                              <span className="text-muted-foreground">
-                                <span className="text-green-500 font-semibold">{athlete.engagementRate}</span> engagement
-                              </span>
+                              {athlete.engagementRate && (
+                                <span className="text-muted-foreground">
+                                  <span className="text-green-500 font-semibold">{athlete.engagementRate}</span> engagement
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -928,11 +1013,9 @@ const BrandDashboard = () => {
                       {mockCampaigns.map((campaign) => (
                         <div key={campaign.id} className="p-4 bg-muted/50 rounded-lg border border-border">
                           <div className="flex items-start gap-4">
-                            <img
-                              src={campaign.athleteImage}
-                              alt={campaign.athleteName}
-                              className="w-16 h-16 rounded-full object-cover border-2 border-border"
-                            />
+                            <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xl font-bold border-2 border-border">
+                              {campaign.athleteName?.[0]}
+                            </div>
                             <div className="flex-1">
                               <div className="flex items-center justify-between mb-2">
                                 <h4 className="font-semibold text-lg">{campaign.athleteName}</h4>
@@ -1003,20 +1086,11 @@ const BrandDashboard = () => {
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-bold text-lg">Brand Information</h3>
                     <Button 
-                      variant={isEditingProfile ? "default" : "outline"}
-                      onClick={() => setIsEditingProfile(!isEditingProfile)}
+                      variant="outline"
+                      onClick={() => setIsEditModalOpen(true)}
                     >
-                      {isEditingProfile ? (
-                        <>
-                          <Save size={16} className="mr-2" />
-                          Save Changes
-                        </>
-                      ) : (
-                        <>
-                          <Edit3 size={16} className="mr-2" />
-                          Edit Profile
-                        </>
-                      )}
+                      <Edit3 size={16} className="mr-2" />
+                      Edit Profile
                     </Button>
                   </div>
 
@@ -1024,144 +1098,122 @@ const BrandDashboard = () => {
                     <div className="space-y-4">
                       <div>
                         <label className="text-sm font-semibold text-muted-foreground">Company Name</label>
-                        {isEditingProfile ? (
-                          <Input
-                            value={profileData.company}
-                            onChange={(e) => setProfileData({...profileData, company: e.target.value})}
-                            className="mt-1 bg-background"
-                          />
-                        ) : (
-                          <p className="mt-1 font-medium">{profileData.company}</p>
-                        )}
+                        <p className="mt-1 font-medium">{brandProfile.companyName || "N/A"}</p>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="text-sm font-semibold text-muted-foreground">First Name</label>
-                          {isEditingProfile ? (
-                            <Input
-                              value={profileData.contactFirstName}
-                              onChange={(e) => setProfileData({...profileData, contactFirstName: e.target.value})}
-                              className="mt-1 bg-background"
-                            />
-                          ) : (
-                            <p className="mt-1 font-medium">{profileData.contactFirstName}</p>
-                          )}
+                          <p className="mt-1 font-medium">{brandProfile.contactFirstName || "N/A"}</p>
                         </div>
                         <div>
                           <label className="text-sm font-semibold text-muted-foreground">Last Name</label>
-                          {isEditingProfile ? (
-                            <Input
-                              value={profileData.contactLastName}
-                              onChange={(e) => setProfileData({...profileData, contactLastName: e.target.value})}
-                              className="mt-1 bg-background"
-                            />
-                          ) : (
-                            <p className="mt-1 font-medium">{profileData.contactLastName}</p>
-                          )}
+                          <p className="mt-1 font-medium">{brandProfile.contactLastName || "N/A"}</p>
                         </div>
                       </div>
                       <div>
                         <label className="text-sm font-semibold text-muted-foreground">Job Title</label>
-                        {isEditingProfile ? (
-                          <Input
-                            value={profileData.contactTitle}
-                            onChange={(e) => setProfileData({...profileData, contactTitle: e.target.value})}
-                            className="mt-1 bg-background"
-                          />
-                        ) : (
-                          <p className="mt-1 font-medium">{profileData.contactTitle}</p>
-                        )}
+                        <p className="mt-1 font-medium">{brandProfile.contactTitle || "N/A"}</p>
                       </div>
                       <div>
                         <label className="text-sm font-semibold text-muted-foreground">Email</label>
-                        {isEditingProfile ? (
-                          <Input
-                            value={profileData.email}
-                            onChange={(e) => setProfileData({...profileData, email: e.target.value})}
-                            className="mt-1 bg-background"
-                          />
-                        ) : (
-                          <p className="mt-1 font-medium">{profileData.email}</p>
-                        )}
+                        <p className="mt-1 font-medium">{brandProfile.contactEmail || brandProfile.email || user?.email || "N/A"}</p>
                       </div>
                       <div>
                         <label className="text-sm font-semibold text-muted-foreground">Phone</label>
-                        {isEditingProfile ? (
-                          <Input
-                            value={profileData.phone}
-                            onChange={(e) => setProfileData({...profileData, phone: e.target.value})}
-                            className="mt-1 bg-background"
-                          />
-                        ) : (
-                          <p className="mt-1 font-medium">{profileData.phone}</p>
-                        )}
+                        <p className="mt-1 font-medium">{brandProfile.contactPhone || "N/A"}</p>
                       </div>
                     </div>
 
                     <div className="space-y-4">
                       <div>
                         <label className="text-sm font-semibold text-muted-foreground">Website</label>
-                        {isEditingProfile ? (
-                          <Input
-                            value={profileData.website}
-                            onChange={(e) => setProfileData({...profileData, website: e.target.value})}
-                            className="mt-1 bg-background"
-                          />
+                        {brandProfile.website ? (
+                          <a 
+                            href={brandProfile.website} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="mt-1 font-medium text-primary hover:underline flex items-center gap-1"
+                          >
+                            {brandProfile.website}
+                            <ExternalLink size={14} />
+                          </a>
                         ) : (
-                          <p className="mt-1 font-medium text-primary">{profileData.website}</p>
+                          <p className="mt-1 font-medium text-muted-foreground">N/A</p>
                         )}
                       </div>
                       <div>
                         <label className="text-sm font-semibold text-muted-foreground">Industry</label>
-                        {isEditingProfile ? (
-                          <Input
-                            value={profileData.industry}
-                            onChange={(e) => setProfileData({...profileData, industry: e.target.value})}
-                            className="mt-1 bg-background"
-                          />
-                        ) : (
-                          <p className="mt-1 font-medium">{profileData.industry}</p>
-                        )}
+                        <p className="mt-1 font-medium">{brandProfile.industry || "N/A"}</p>
                       </div>
                       <div>
                         <label className="text-sm font-semibold text-muted-foreground">Company Size</label>
-                        {isEditingProfile ? (
-                          <Input
-                            value={profileData.companySize}
-                            onChange={(e) => setProfileData({...profileData, companySize: e.target.value})}
-                            className="mt-1 bg-background"
-                          />
-                        ) : (
-                          <p className="mt-1 font-medium">{profileData.companySize}</p>
-                        )}
+                        <p className="mt-1 font-medium">{brandProfile.companySize || "N/A"}</p>
                       </div>
                       <div>
                         <label className="text-sm font-semibold text-muted-foreground">Marketing Budget</label>
-                        {isEditingProfile ? (
-                          <Input
-                            value={profileData.budget}
-                            onChange={(e) => setProfileData({...profileData, budget: e.target.value})}
-                            className="mt-1 bg-background"
-                          />
-                        ) : (
-                          <p className="mt-1 font-medium text-green-500">{profileData.budget}</p>
-                        )}
+                        <p className="mt-1 font-medium text-green-500">{brandProfile.budgetRange || "N/A"}</p>
                       </div>
                       <div>
                         <label className="text-sm font-semibold text-muted-foreground">Description</label>
-                        {isEditingProfile ? (
-                          <Textarea
-                            value={profileData.description}
-                            onChange={(e) => setProfileData({...profileData, description: e.target.value})}
-                            className="mt-1 bg-background"
-                            rows={3}
-                          />
-                        ) : (
-                          <p className="mt-1 text-muted-foreground">{profileData.description}</p>
-                        )}
+                        <p className="mt-1 text-muted-foreground">{brandProfile.description || "N/A"}</p>
                       </div>
                     </div>
                   </div>
+
+                  {/* Additional Info */}
+                  {(brandProfile.targetAudience || brandProfile.marketingGoals || brandProfile.preferredTimeline) && (
+                    <div className="mt-6 pt-6 border-t border-border space-y-4">
+                      {brandProfile.targetAudience && (
+                        <div>
+                          <label className="text-sm font-semibold text-muted-foreground">Target Audience</label>
+                          <p className="mt-1 text-muted-foreground">{brandProfile.targetAudience}</p>
+                        </div>
+                      )}
+                      {brandProfile.marketingGoals && (
+                        <div>
+                          <label className="text-sm font-semibold text-muted-foreground">Marketing Goals</label>
+                          <p className="mt-1 text-muted-foreground">{brandProfile.marketingGoals}</p>
+                        </div>
+                      )}
+                      {brandProfile.preferredTimeline && (
+                        <div>
+                          <label className="text-sm font-semibold text-muted-foreground">Preferred Timeline</label>
+                          <p className="mt-1 font-medium">{brandProfile.preferredTimeline}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Social Accounts */}
+                  {brandProfile.socialAccounts && brandProfile.socialAccounts.length > 0 && (
+                    <div className="mt-6 pt-6 border-t border-border">
+                      <label className="text-sm font-semibold text-muted-foreground mb-3 block">Social Media Accounts</label>
+                      <div className="space-y-2">
+                        {brandProfile.socialAccounts.map((account, index) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                            <div className="flex items-center gap-2">
+                              {getSocialIcon(account.platform.toString())}
+                              <span className="text-sm font-medium">{account.handle}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              {account.followers && (
+                                <span className="text-xs text-muted-foreground">
+                                  {account.followers.toLocaleString()} followers
+                                </span>
+                              )}
+                              {account.profileUrl && (
+                                <Button variant="ghost" size="sm" asChild>
+                                  <a href={account.profileUrl} target="_blank" rel="noopener noreferrer">
+                                    <ExternalLink size={14} />
+                                  </a>
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 
@@ -1179,9 +1231,21 @@ const BrandDashboard = () => {
                   <div className="flex justify-end mb-6">
                     <Button 
                       variant={isEditingPreferences ? "default" : "outline"}
-                      onClick={() => setIsEditingPreferences(!isEditingPreferences)}
+                      onClick={() => {
+                        if (isEditingPreferences) {
+                          handleSavePreferences();
+                        } else {
+                          setIsEditingPreferences(true);
+                        }
+                      }}
+                      disabled={isSavingPreferences}
                     >
-                      {isEditingPreferences ? (
+                      {isSavingPreferences ? (
+                        <>
+                          <Loader2 size={16} className="mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : isEditingPreferences ? (
                         <>
                           <Save size={16} className="mr-2" />
                           Save Preferences
@@ -1205,15 +1269,19 @@ const BrandDashboard = () => {
                         {isEditingPreferences ? (
                           <Input
                             value={preferencesData.preferredSports.join(", ")}
-                            onChange={(e) => setPreferencesData({...preferencesData, preferredSports: e.target.value.split(", ")})}
+                            onChange={(e) => setPreferencesData({...preferencesData, preferredSports: e.target.value.split(", ").map(s => s.trim()).filter(s => s)})}
                             className="bg-background"
                             placeholder="Football, Basketball, Soccer"
                           />
                         ) : (
                           <div className="flex flex-wrap gap-2">
-                            {preferencesData.preferredSports.map((sport, i) => (
-                              <Badge key={i} className="bg-primary/10 text-primary">{sport}</Badge>
-                            ))}
+                            {preferencesData.preferredSports.length > 0 ? (
+                              preferencesData.preferredSports.map((sport, i) => (
+                                <Badge key={i} className="bg-primary/10 text-primary">{sport}</Badge>
+                              ))
+                            ) : (
+                              <p className="text-sm text-muted-foreground">No sports selected</p>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1239,7 +1307,12 @@ const BrandDashboard = () => {
                             />
                           </div>
                         ) : (
-                          <p className="font-medium">{preferencesData.minFollowers} - {preferencesData.maxFollowers}</p>
+                          <p className="font-medium">
+                            {preferencesData.minFollowers && preferencesData.maxFollowers 
+                              ? `${preferencesData.minFollowers} - ${preferencesData.maxFollowers}`
+                              : <span className="text-muted-foreground">Not set</span>
+                            }
+                          </p>
                         )}
                       </div>
 
@@ -1251,15 +1324,19 @@ const BrandDashboard = () => {
                         {isEditingPreferences ? (
                           <Input
                             value={preferencesData.preferredConferences.join(", ")}
-                            onChange={(e) => setPreferencesData({...preferencesData, preferredConferences: e.target.value.split(", ")})}
+                            onChange={(e) => setPreferencesData({...preferencesData, preferredConferences: e.target.value.split(", ").map(c => c.trim()).filter(c => c)})}
                             className="bg-background"
                             placeholder="ACC, Big Ten, SEC"
                           />
                         ) : (
                           <div className="flex flex-wrap gap-2">
-                            {preferencesData.preferredConferences.map((conf, i) => (
-                              <Badge key={i} variant="secondary">{conf}</Badge>
-                            ))}
+                            {preferencesData.preferredConferences.length > 0 ? (
+                              preferencesData.preferredConferences.map((conf, i) => (
+                                <Badge key={i} variant="secondary">{conf}</Badge>
+                              ))
+                            ) : (
+                              <p className="text-sm text-muted-foreground">No conferences selected</p>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1277,7 +1354,9 @@ const BrandDashboard = () => {
                             placeholder="$5,000 - $15,000"
                           />
                         ) : (
-                          <p className="font-medium text-green-500">{preferencesData.budgetPerAthlete}</p>
+                          <p className="font-medium text-green-500">
+                            {preferencesData.budgetPerAthlete || <span className="text-muted-foreground">Not set</span>}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -1291,15 +1370,19 @@ const BrandDashboard = () => {
                         {isEditingPreferences ? (
                           <Input
                             value={preferencesData.interestAlignment.join(", ")}
-                            onChange={(e) => setPreferencesData({...preferencesData, interestAlignment: e.target.value.split(", ")})}
+                            onChange={(e) => setPreferencesData({...preferencesData, interestAlignment: e.target.value.split(", ").map(i => i.trim()).filter(i => i)})}
                             className="bg-background"
                             placeholder="Fitness, Health, Wellness"
                           />
                         ) : (
                           <div className="flex flex-wrap gap-2">
-                            {preferencesData.interestAlignment.map((interest, i) => (
-                              <Badge key={i} className="bg-primary/10 text-primary">{interest}</Badge>
-                            ))}
+                            {preferencesData.interestAlignment.length > 0 ? (
+                              preferencesData.interestAlignment.map((interest, i) => (
+                                <Badge key={i} className="bg-primary/10 text-primary">{interest}</Badge>
+                              ))
+                            ) : (
+                              <p className="text-sm text-muted-foreground">No interests selected</p>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1312,15 +1395,19 @@ const BrandDashboard = () => {
                         {isEditingPreferences ? (
                           <Input
                             value={preferencesData.contentPreferences.join(", ")}
-                            onChange={(e) => setPreferencesData({...preferencesData, contentPreferences: e.target.value.split(", ")})}
+                            onChange={(e) => setPreferencesData({...preferencesData, contentPreferences: e.target.value.split(", ").map(c => c.trim()).filter(c => c)})}
                             className="bg-background"
                             placeholder="Training Videos, Lifestyle"
                           />
                         ) : (
                           <div className="flex flex-wrap gap-2">
-                            {preferencesData.contentPreferences.map((content, i) => (
-                              <Badge key={i} variant="secondary">{content}</Badge>
-                            ))}
+                            {preferencesData.contentPreferences.length > 0 ? (
+                              preferencesData.contentPreferences.map((content, i) => (
+                                <Badge key={i} variant="secondary">{content}</Badge>
+                              ))
+                            ) : (
+                              <p className="text-sm text-muted-foreground">No content types selected</p>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1338,7 +1425,9 @@ const BrandDashboard = () => {
                             placeholder="3-6 months"
                           />
                         ) : (
-                          <p className="font-medium">{preferencesData.dealDuration}</p>
+                          <p className="font-medium">
+                            {preferencesData.dealDuration || <span className="text-muted-foreground">Not set</span>}
+                          </p>
                         )}
                       </div>
 
@@ -1356,7 +1445,9 @@ const BrandDashboard = () => {
                             placeholder="Any other preferences..."
                           />
                         ) : (
-                          <p className="text-sm text-muted-foreground">{preferencesData.notes}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {preferencesData.notes || "No additional notes"}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -1368,18 +1459,16 @@ const BrandDashboard = () => {
         </div>
       </div>
 
-      {/* Athlete Profile Modal */}
+      {/* Athlete Profile Modal - keeping the original modal structure */}
       <Dialog open={!!selectedAthlete} onOpenChange={() => setSelectedAthlete(null)}>
         <DialogContent className="max-w-4xl max-h-[95vh] overflow-y-auto p-0">
           {selectedAthlete && (
             <>
               <div className="relative h-32 bg-gradient-to-r from-primary/20 via-primary/10 to-transparent">
                 <div className="absolute -bottom-16 left-8">
-                  <img
-                    src={selectedAthlete.profileImage}
-                    alt={`${selectedAthlete.firstName} ${selectedAthlete.lastName}`}
-                    className="w-32 h-32 rounded-full object-cover border-4 border-background shadow-xl"
-                  />
+                  <div className="w-32 h-32 rounded-full bg-primary/20 flex items-center justify-center text-primary text-4xl font-bold border-4 border-background shadow-xl">
+                    {selectedAthlete.firstName?.[0]}{selectedAthlete.lastName?.[0]}
+                  </div>
                 </div>
                 <div className="absolute top-4 right-4 flex gap-2">
                   <Button
@@ -1474,76 +1563,92 @@ const BrandDashboard = () => {
                       </div>
                     </div>
 
-                    <div className="p-4 bg-card rounded-xl border border-border">
-                      <h4 className="font-semibold mb-3 flex items-center gap-2">
-                        <TrendingUp size={18} className="text-green-500" />
-                        Season Statistics
-                      </h4>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {Object.entries(selectedAthlete.seasonStats).map(([key, value]) => (
-                          <div key={key} className="text-center p-3 bg-muted rounded-lg">
-                            <p className="text-2xl font-bold">{value}</p>
-                            <p className="text-xs text-muted-foreground capitalize">
-                              {key.replace(/([A-Z])/g, ' $1').trim()}
-                            </p>
-                          </div>
-                        ))}
+                    {Object.keys(selectedAthlete.seasonStats).length > 0 && (
+                      <div className="p-4 bg-card rounded-xl border border-border">
+                        <h4 className="font-semibold mb-3 flex items-center gap-2">
+                          <TrendingUp size={18} className="text-green-500" />
+                          Season Statistics
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          {Object.entries(selectedAthlete.seasonStats).map(([key, value]) => (
+                            <div key={key} className="text-center p-3 bg-muted rounded-lg">
+                              <p className="text-2xl font-bold">{value}</p>
+                              <p className="text-xs text-muted-foreground capitalize">
+                                {key.replace(/([A-Z])/g, ' $1').trim()}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </TabsContent>
 
                   <TabsContent value="social" className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      {selectedAthlete.socialAccounts.map((account, i) => (
-                        <div key={i} className="p-4 bg-card rounded-xl border border-border">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <Instagram size={20} className="text-primary" />
-                              <span className="font-semibold">{account.platform}</span>
+                    {selectedAthlete.socialAccounts && selectedAthlete.socialAccounts.length > 0 ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          {selectedAthlete.socialAccounts.map((account, i) => (
+                            <div key={i} className="p-4 bg-card rounded-xl border border-border">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  {getSocialIcon(account.platform)}
+                                  <span className="font-semibold">{account.platform}</span>
+                                </div>
+                                <span className="text-lg font-bold">{account.followers}</span>
+                              </div>
+                              <p className="text-sm text-muted-foreground">{account.handle}</p>
                             </div>
-                            <span className="text-lg font-bold">{account.followers}</span>
-                          </div>
-                          <p className="text-sm text-muted-foreground">{account.handle}</p>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                    <div className="p-4 bg-muted rounded-xl">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold">Overall Engagement Rate</span>
-                        <span className="text-2xl font-bold text-green-500">{selectedAthlete.engagementRate}</span>
+                        {selectedAthlete.engagementRate && (
+                          <div className="p-4 bg-muted rounded-xl">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold">Overall Engagement Rate</span>
+                              <span className="text-2xl font-bold text-green-500">{selectedAthlete.engagementRate}</span>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Users size={48} className="mx-auto mb-4 opacity-50" />
+                        <p>No social media accounts available</p>
                       </div>
-                    </div>
+                    )}
                   </TabsContent>
 
                   <TabsContent value="tags" className="space-y-6">
-                    <div>
-                      <h4 className="font-semibold mb-3 flex items-center gap-2">
-                        <Heart size={18} className="text-red-500" />
-                        Interest Tags
-                      </h4>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedAthlete.interestTags.map((tag, i) => (
-                          <Badge key={i} className="px-3 py-1 text-sm bg-primary/10 text-primary border-primary/20">
-                            {getTagIcon(tag)}
-                            <span className="ml-1">{tag}</span>
-                          </Badge>
-                        ))}
+                    {selectedAthlete.socialAccounts && selectedAthlete.socialAccounts.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold mb-3 flex items-center gap-2">
+                          <Users size={18} className="text-primary" />
+                          Social Media Accounts
+                        </h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          {selectedAthlete.socialAccounts.map((account, i) => (
+                            <div key={i} className="p-4 bg-card rounded-xl border border-border">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  {getSocialIcon(account.platform)}
+                                  <span className="font-semibold">{account.platform}</span>
+                                </div>
+                                <span className="text-lg font-bold">{account.followers}</span>
+                              </div>
+                              <p className="text-sm text-muted-foreground">{account.handle}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold mb-3 flex items-center gap-2">
-                        <Video size={18} className="text-blue-500" />
-                        Content Types
-                      </h4>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedAthlete.contentTypes.map((type, i) => (
-                          <Badge key={i} variant="secondary" className="px-3 py-1 text-sm">
-                            {getTagIcon(type)}
-                            <span className="ml-1">{type}</span>
-                          </Badge>
-                        ))}
+                    )}
+                    {selectedAthlete.bio && (
+                      <div>
+                        <h4 className="font-semibold mb-3 flex items-center gap-2">
+                          <FileText size={18} className="text-blue-500" />
+                          Bio
+                        </h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">{selectedAthlete.bio}</p>
                       </div>
-                    </div>
+                    )}
                   </TabsContent>
                 </Tabs>
 
@@ -1585,11 +1690,9 @@ const BrandDashboard = () => {
           {contactAthlete && (
             <div className="space-y-4">
               <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
-                <img
-                  src={contactAthlete.profileImage}
-                  alt={contactAthlete.firstName}
-                  className="w-14 h-14 rounded-full object-cover border-2 border-primary"
-                />
+                <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xl font-bold border-2 border-primary">
+                  {contactAthlete.firstName?.[0]}{contactAthlete.lastName?.[0]}
+                </div>
                 <div>
                   <h4 className="font-semibold">{contactAthlete.firstName} {contactAthlete.lastName}</h4>
                   <p className="text-sm text-muted-foreground">{contactAthlete.sport} • {contactAthlete.school}</p>
@@ -1613,7 +1716,13 @@ const BrandDashboard = () => {
             <Button variant="outline" onClick={() => setShowContactModal(false)}>
               Cancel
             </Button>
-            <Button className="bg-primary text-primary-foreground" onClick={() => setShowContactModal(false)}>
+            <Button className="bg-primary text-primary-foreground" onClick={() => {
+              toast({
+                title: "Message sent",
+                description: `Your inquiry has been sent to ${contactAthlete?.firstName} ${contactAthlete?.lastName}`,
+              });
+              setShowContactModal(false);
+            }}>
               <Send size={16} className="mr-2" />
               Send Inquiry
             </Button>
@@ -1671,7 +1780,6 @@ const BrandDashboard = () => {
                     }}
                   >
                     <div className="flex items-start gap-4">
-                      {/* Rank Badge */}
                       <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${
                         index === 0 ? "bg-primary text-primary-foreground" :
                         index === 1 ? "bg-gray-300 text-gray-700" :
@@ -1681,16 +1789,12 @@ const BrandDashboard = () => {
                         {index + 1}
                       </div>
 
-                      {/* Profile Image */}
-                      <img
-                        src={athlete.profileImage}
-                        alt={athlete.firstName}
-                        className={`w-16 h-16 rounded-full object-cover border-2 ${
-                          index === 0 ? "border-primary" : "border-border"
-                        }`}
-                      />
+                      <div className={`w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xl font-bold border-2 ${
+                        index === 0 ? "border-primary" : "border-border"
+                      }`}>
+                        {athlete.firstName?.[0]}{athlete.lastName?.[0]}
+                      </div>
 
-                      {/* Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3 mb-1">
                           <h4 className="font-bold text-lg">{athlete.firstName} {athlete.lastName}</h4>
@@ -1705,7 +1809,6 @@ const BrandDashboard = () => {
                           {athlete.sport} • {athlete.position} • {athlete.school}
                         </p>
                         
-                        {/* Match Reasons */}
                         <div className="flex flex-wrap gap-2">
                           {athlete.matchReasons.map((reason, i) => (
                             <Badge key={i} variant="secondary" className="text-xs">
@@ -1716,7 +1819,6 @@ const BrandDashboard = () => {
                         </div>
                       </div>
 
-                      {/* Match Score */}
                       <div className="flex-shrink-0 text-right">
                         <div className={`text-3xl font-black ${
                           athlete.matchScore >= 70 ? "text-green-500" :
@@ -1776,9 +1878,38 @@ const BrandDashboard = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Profile Modal */}
+      {brandProfile && authToken && (
+        <EditBrandProfile
+          profile={brandProfile}
+          open={isEditModalOpen}
+          onOpenChange={setIsEditModalOpen}
+          onSuccess={async () => {
+            try {
+              const token = await getToken();
+              if (token) {
+                const updatedProfile = await getMyBrandProfile(token);
+                setBrandProfile(updatedProfile);
+                toast({
+                  title: "Profile updated",
+                  description: "Your brand profile has been successfully updated.",
+                });
+              }
+            } catch (error) {
+              console.error("Failed to refresh profile:", error);
+              toast({
+                title: "Error refreshing profile",
+                description: "Please reload the page to see the latest changes.",
+                variant: "destructive",
+              });
+            }
+          }}
+          token={authToken}
+        />
+      )}
     </div>
   );
 };
 
 export default BrandDashboard;
-
