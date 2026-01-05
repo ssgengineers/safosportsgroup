@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     claude_model: str = "claude-3-5-sonnet-20241022"
     claude_max_tokens: int = 2000
     
+    # College Football Data API
+    cfbd_api_key: str = ""
+    
     # Rule Engine Settings (weights for scoring - must sum to 100)
     rule_weight_sport_match: int = 25       # Points for sport alignment
     rule_weight_follower_reach: int = 25    # Points for social media reach

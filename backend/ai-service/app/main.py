@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.config import get_settings
-from app.routers import health, scoring, matching
+from app.routers import health, scoring, matching, leverage
 
 
 settings = get_settings()
@@ -59,6 +59,7 @@ app.add_middleware(
 app.include_router(health.router, prefix=settings.api_prefix, tags=["Health"])
 app.include_router(scoring.router, prefix=settings.api_prefix, tags=["Scoring"])
 app.include_router(matching.router, prefix=settings.api_prefix, tags=["Matching"])
+app.include_router(leverage.router, prefix=settings.api_prefix, tags=["Leverage Calculator"])
 
 
 @app.get("/")
