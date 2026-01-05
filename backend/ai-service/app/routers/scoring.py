@@ -429,3 +429,4 @@ async def get_score_tiers():
             }
         ]
     }
+

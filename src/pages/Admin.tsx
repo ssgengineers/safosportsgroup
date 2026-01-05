@@ -1677,7 +1677,7 @@ const Admin = () => {
 
       {/* Athlete Request Modal */}
       <Dialog open={!!selectedAthleteRequest} onOpenChange={() => setSelectedAthleteRequest(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Athlete Application</DialogTitle>
             <DialogDescription>Review this athlete's signup request</DialogDescription>
@@ -1737,7 +1737,7 @@ const Admin = () => {
 
       {/* Brand Request Modal */}
       <Dialog open={!!selectedBrandRequest} onOpenChange={() => setSelectedBrandRequest(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Brand Partnership Request</DialogTitle>
             <DialogDescription>Review this brand's partnership application</DialogDescription>
