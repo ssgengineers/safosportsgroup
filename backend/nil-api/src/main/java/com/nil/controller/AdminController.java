@@ -4,15 +4,19 @@ import com.nil.entity.AthleteIntakeRequest;
 import com.nil.entity.BrandIntakeRequest;
 import com.nil.repository.AthleteIntakeRequestRepository;
 import com.nil.repository.BrandIntakeRequestRepository;
+import com.nil.service.ClerkInvitationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -22,14 +26,19 @@ import java.util.UUID;
 @SecurityRequirement(name = "bearer-jwt")
 public class AdminController {
 
+    private static final Logger log = LoggerFactory.getLogger(AdminController.class);
+
     private final AthleteIntakeRequestRepository athleteIntakeRepo;
     private final BrandIntakeRequestRepository brandIntakeRepo;
+    private final ClerkInvitationService clerkInvitationService;
 
     public AdminController(
             AthleteIntakeRequestRepository athleteIntakeRepo,
-            BrandIntakeRequestRepository brandIntakeRepo) {
+            BrandIntakeRequestRepository brandIntakeRepo,
+            ClerkInvitationService clerkInvitationService) {
         this.athleteIntakeRepo = athleteIntakeRepo;
         this.brandIntakeRepo = brandIntakeRepo;
+        this.clerkInvitationService = clerkInvitationService;
     }
 
     @GetMapping("/intake/athletes")
@@ -86,10 +95,32 @@ public class AdminController {
         
         return athleteIntakeRepo.findById(id)
             .map(req -> {
-                req.setStatus(request.get("status"));
+                String newStatus = request.get("status");
+                String oldStatus = req.getStatus();
+                req.setStatus(newStatus);
+                
                 if (request.containsKey("adminNotes")) {
                     req.setAdminNotes(request.get("adminNotes"));
                 }
+                
+                // Send Clerk invitation when status changes to APPROVED
+                if ("APPROVED".equalsIgnoreCase(newStatus) && !"APPROVED".equalsIgnoreCase(oldStatus)) {
+                    log.info("Approving athlete request for {} - sending Clerk invitation", req.getEmail());
+                    String invitationId = clerkInvitationService.sendInvitation(
+                            req.getEmail(),
+                            req.getFirstName(),
+                            req.getLastName()
+                    );
+                    
+                    if (invitationId != null) {
+                        req.setClerkInvitationId(invitationId);
+                        req.setInvitationSentAt(Instant.now());
+                        log.info("Clerk invitation sent successfully. Invitation ID: {}", invitationId);
+                    } else {
+                        log.warn("Failed to send Clerk invitation for athlete request {}", req.getId());
+                    }
+                }
+                
                 return ResponseEntity.ok(athleteIntakeRepo.save(req));
             })
             .orElse(ResponseEntity.notFound().build());
@@ -103,10 +134,32 @@ public class AdminController {
         
         return brandIntakeRepo.findById(id)
             .map(req -> {
-                req.setStatus(request.get("status"));
+                String newStatus = request.get("status");
+                String oldStatus = req.getStatus();
+                req.setStatus(newStatus);
+                
                 if (request.containsKey("adminNotes")) {
                     req.setAdminNotes(request.get("adminNotes"));
                 }
+                
+                // Send Clerk invitation when status changes to APPROVED
+                if ("APPROVED".equalsIgnoreCase(newStatus) && !"APPROVED".equalsIgnoreCase(oldStatus)) {
+                    log.info("Approving brand request for {} - sending Clerk invitation", req.getEmail());
+                    String invitationId = clerkInvitationService.sendInvitation(
+                            req.getEmail(),
+                            req.getContactFirstName(),
+                            req.getContactLastName()
+                    );
+                    
+                    if (invitationId != null) {
+                        req.setClerkInvitationId(invitationId);
+                        req.setInvitationSentAt(Instant.now());
+                        log.info("Clerk invitation sent successfully. Invitation ID: {}", invitationId);
+                    } else {
+                        log.warn("Failed to send Clerk invitation for brand request {}", req.getId());
+                    }
+                }
+                
                 return ResponseEntity.ok(brandIntakeRepo.save(req));
             })
             .orElse(ResponseEntity.notFound().build());

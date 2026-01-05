@@ -1,7 +1,9 @@
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import Navigation from "@/components/layout/Navigation";
-import { getAthleteIntakeRequests, getBrandIntakeRequests, getIntakeStats, type AthleteIntakeRequestEntity, type BrandIntakeRequestEntity } from "@/services/api";
+import { getAthleteIntakeRequests, getBrandIntakeRequests, getIntakeStats, updateAthleteRequestStatus, updateBrandRequestStatus, getAllAthleteProfiles, getAllBrandProfiles, deleteAthleteProfile, deleteBrandProfile, type AthleteIntakeRequestEntity, type BrandIntakeRequestEntity, type AthleteProfileResponse, type BrandProfileResponse } from "@/services/api";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +43,10 @@ import {
   Dumbbell,
   Camera,
   Laugh,
-  Target
+  Target,
+  Trash2,
+  AlertTriangle,
+  Loader2
 } from "lucide-react";
 
 // Enhanced athlete data with full profiles
@@ -506,6 +511,8 @@ type BrandRequest = typeof brandRequests[0];
 type Brand = typeof brands[0];
 
 const Admin = () => {
+  const { toast } = useToast();
+  const { getToken } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedAthleteRequest, setSelectedAthleteRequest] = useState<AthleteIntakeRequestEntity | null>(null);
   const [selectedBrandRequest, setSelectedBrandRequest] = useState<BrandIntakeRequestEntity | null>(null);
@@ -515,29 +522,264 @@ const Admin = () => {
   // Real data from API
   const [athleteRequests, setAthleteRequests] = useState<AthleteIntakeRequestEntity[]>([]);
   const [brandRequests, setBrandRequests] = useState<BrandIntakeRequestEntity[]>([]);
+  const [athleteProfiles, setAthleteProfiles] = useState<AthleteProfileResponse[]>([]);
+  const [brandProfiles, setBrandProfiles] = useState<BrandProfileResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState({ athletes: { pending: 0, total: 0 }, brands: { pending: 0, total: 0 } });
+  const [isUpdating, setIsUpdating] = useState(false);
+  
+  // Delete confirmation states
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ type: 'athlete' | 'brand', id: string, name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      const [athletesData, brandsData, statsData] = await Promise.all([
+        getAthleteIntakeRequests(),
+        getBrandIntakeRequests(),
+        getIntakeStats()
+      ]);
+      setAthleteRequests(athletesData.content || []);
+      setBrandRequests(brandsData.content || []);
+      setStats(statsData);
+      
+      // Fetch athlete and brand profiles separately with error handling
+      try {
+        const token = await getToken();
+        const [athletesData, brandsData] = await Promise.all([
+          getAllAthleteProfiles(0, 100, token || undefined),
+          getAllBrandProfiles(0, 100, token || undefined)
+        ]);
+        console.log('Fetched athlete profiles:', athletesData);
+        console.log('Fetched brand profiles:', brandsData);
+        setAthleteProfiles(athletesData.content || []);
+        setBrandProfiles(brandsData.content || []);
+      } catch (profileError) {
+        console.error('Failed to fetch profiles:', profileError);
+        // Don't show toast for profile fetch errors, just log it
+        setAthleteProfiles([]);
+        setBrandProfiles([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load data. Please refresh the page.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        const [athletesData, brandsData, statsData] = await Promise.all([
-          getAthleteIntakeRequests(),
-          getBrandIntakeRequests(),
-          getIntakeStats()
-        ]);
-        setAthleteRequests(athletesData.content || []);
-        setBrandRequests(brandsData.content || []);
-        setStats(statsData);
-      } catch (error) {
-        console.error('Failed to fetch intake requests:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchData();
   }, []);
+
+  const handleApproveAthlete = async () => {
+    if (!selectedAthleteRequest) return;
+    
+    try {
+      setIsUpdating(true);
+      await updateAthleteRequestStatus(selectedAthleteRequest.id, "APPROVED");
+      
+      // Update local state
+      setAthleteRequests(prev => 
+        prev.map(req => 
+          req.id === selectedAthleteRequest.id 
+            ? { ...req, status: "APPROVED" }
+            : req
+        )
+      );
+      
+      // Update selected request
+      setSelectedAthleteRequest({ ...selectedAthleteRequest, status: "APPROVED" });
+      
+      // Refresh all data including profiles
+      await fetchData();
+      
+      toast({
+        title: "Approved!",
+        description: `An invitation has been sent to ${selectedAthleteRequest.firstName} ${selectedAthleteRequest.lastName}. They will appear in Athletes once they sign up.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to approve application. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleRejectAthlete = async () => {
+    if (!selectedAthleteRequest) return;
+    
+    try {
+      setIsUpdating(true);
+      await updateAthleteRequestStatus(selectedAthleteRequest.id, "REJECTED");
+      
+      // Update local state
+      setAthleteRequests(prev => 
+        prev.map(req => 
+          req.id === selectedAthleteRequest.id 
+            ? { ...req, status: "REJECTED" }
+            : req
+        )
+      );
+      
+      // Update selected request
+      setSelectedAthleteRequest({ ...selectedAthleteRequest, status: "REJECTED" });
+      
+      // Refresh stats
+      await fetchData();
+      
+      toast({
+        title: "Rejected",
+        description: `${selectedAthleteRequest.firstName} ${selectedAthleteRequest.lastName}'s application has been rejected.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to reject application. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleApproveBrand = async () => {
+    if (!selectedBrandRequest) return;
+    
+    try {
+      setIsUpdating(true);
+      await updateBrandRequestStatus(selectedBrandRequest.id, "APPROVED");
+      
+      // Update local state
+      setBrandRequests(prev => 
+        prev.map(req => 
+          req.id === selectedBrandRequest.id 
+            ? { ...req, status: "APPROVED" }
+            : req
+        )
+      );
+      
+      // Update selected request
+      setSelectedBrandRequest({ ...selectedBrandRequest, status: "APPROVED" });
+      
+      // Refresh stats
+      await fetchData();
+      
+      toast({
+        title: "Approved!",
+        description: `${selectedBrandRequest.company}'s partnership request has been approved.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to approve request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleRejectBrand = async () => {
+    if (!selectedBrandRequest) return;
+    
+    try {
+      setIsUpdating(true);
+      await updateBrandRequestStatus(selectedBrandRequest.id, "REJECTED");
+      
+      // Update local state
+      setBrandRequests(prev => 
+        prev.map(req => 
+          req.id === selectedBrandRequest.id 
+            ? { ...req, status: "REJECTED" }
+            : req
+        )
+      );
+      
+      // Update selected request
+      setSelectedBrandRequest({ ...selectedBrandRequest, status: "REJECTED" });
+      
+      // Refresh stats
+      await fetchData();
+      
+      toast({
+        title: "Rejected",
+        description: `${selectedBrandRequest.company}'s partnership request has been rejected.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to reject request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Delete handlers
+  const handleDeleteClick = (type: 'athlete' | 'brand', id: string, name: string) => {
+    setItemToDelete({ type, id, name });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    setDeleteDialogOpen(false);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteFinal = async () => {
+    if (!itemToDelete) return;
+    
+    try {
+      setIsDeleting(true);
+      const token = await getToken();
+      
+      if (itemToDelete.type === 'athlete') {
+        await deleteAthleteProfile(itemToDelete.id, token || undefined);
+        setAthleteProfiles(prev => prev.filter(p => p.id !== itemToDelete.id));
+      } else {
+        await deleteBrandProfile(itemToDelete.id, token || undefined);
+        setBrandProfiles(prev => prev.filter(p => p.id !== itemToDelete.id));
+      }
+      
+      toast({
+        title: "Deleted",
+        description: `${itemToDelete.name} has been permanently deleted.`,
+      });
+      
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
+      
+      // Refresh data
+      await fetchData();
+    } catch (error) {
+      console.error('Failed to delete:', error);
+      toast({
+        title: "Error",
+        description: `Failed to delete ${itemToDelete.name}. Please try again.`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setDeleteConfirmOpen(false);
+    setItemToDelete(null);
+  };
 
   const getStatusColor = (status: string) => {
     const statusLower = status?.toLowerCase();
@@ -690,124 +932,326 @@ const Admin = () => {
 
               {/* Athletes Tab */}
               <TabsContent value="athletes">
-                <div className="grid gap-4">
-                  {athletes.map((athlete) => (
-                    <motion.div
-                      key={athlete.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="bg-card rounded-xl border border-border p-6 hover:border-primary/50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedAthlete(athlete)}
-                    >
-                      <div className="flex items-start gap-6">
-                        {/* Profile Image */}
-                        <img
-                          src={athlete.profileImage}
-                          alt={`${athlete.firstName} ${athlete.lastName}`}
-                          className="w-20 h-20 rounded-full object-cover border-2 border-primary"
-                        />
-                        
-                        {/* Basic Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 mb-1">
-                            <h3 className="text-xl font-bold">{athlete.firstName} {athlete.lastName}</h3>
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(athlete.status)}`}>
-                              {getStatusIcon(athlete.status)}
-                              {athlete.status}
-                            </span>
-                          </div>
-                          <p className="text-muted-foreground mb-2">
-                            {athlete.sport} • {athlete.position} • {athlete.school}
-                          </p>
-                          <div className="flex items-center gap-4 text-sm">
-                            <span className="text-muted-foreground">
-                              <span className="text-foreground font-semibold">{athlete.totalFollowers}</span> followers
-                            </span>
-                            <span className="text-muted-foreground">
-                              <span className="text-primary font-semibold">{athlete.deals.filter(d => d.status === "active").length}</span> active deals
-                            </span>
-                            <span className="text-muted-foreground">
-                              <span className="text-green-500 font-semibold">${calculateTotalDealValue(athlete)}</span> total value
-                            </span>
-                          </div>
-                        </div>
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
+                  </div>
+                ) : athleteProfiles.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Users size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>No athlete profiles found.</p>
+                    <p className="text-sm mt-2">Athletes will appear here after they complete sign-up.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4">
+                    {athleteProfiles
+                      .filter(profile => {
+                        if (!searchTerm) return true;
+                        const search = searchTerm.toLowerCase();
+                        const name = `${profile.firstName || ''} ${profile.lastName || ''}`.toLowerCase();
+                        const sport = profile.sport?.toString().toLowerCase() || '';
+                        const school = profile.schoolName?.toLowerCase() || '';
+                        return name.includes(search) || sport.includes(search) || school.includes(search);
+                      })
+                      .map((profile) => (
+                        <motion.div
+                          key={profile.id}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="bg-card rounded-xl border border-border p-6 hover:border-primary/50 transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-start gap-6">
+                            {/* Profile Image Placeholder */}
+                            <div className="w-20 h-20 rounded-full bg-primary/20 border-2 border-primary flex items-center justify-center">
+                              <Users size={32} className="text-primary" />
+                            </div>
+                            
+                            {/* Basic Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-3 mb-1">
+                                <h3 className="text-xl font-bold">
+                                  {profile.firstName || ''} {profile.lastName || ''}
+                                </h3>
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  profile.isActive ? 'bg-green-500/20 text-green-500' : 'bg-gray-500/20 text-gray-500'
+                                }`}>
+                                  {profile.isActive ? <CheckCircle size={12} /> : <Clock size={12} />}
+                                  {profile.isActive ? 'active' : 'inactive'}
+                                </span>
+                              </div>
+                              <p className="text-muted-foreground mb-2">
+                                {profile.sport?.toString() || 'N/A'} • {profile.position || 'N/A'} • {profile.schoolName || 'N/A'}
+                              </p>
+                              <div className="flex items-center gap-4 text-sm">
+                                {profile.socialAccounts && profile.socialAccounts.length > 0 && (
+                                  <span className="text-muted-foreground">
+                                    <span className="text-foreground font-semibold">
+                                      {profile.socialAccounts.reduce((sum, acc) => sum + (acc.followers || 0), 0).toLocaleString()}
+                                    </span> followers
+                                  </span>
+                                )}
+                                <span className="text-muted-foreground">
+                                  <span className="text-primary font-semibold">{profile.profileCompletenessScore || profile.completenessScore || 0}%</span> complete
+                                </span>
+                                {profile.user?.email && (
+                                  <span className="text-muted-foreground text-xs">
+                                    {profile.user.email}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
 
-                        {/* Tags Preview */}
-                        <div className="hidden lg:flex flex-wrap gap-1 max-w-xs">
-                          {athlete.interestTags.slice(0, 4).map((tag, i) => (
-                            <Badge key={i} variant="secondary" className="text-xs">
-                              {tag}
-                            </Badge>
-                          ))}
-                          {athlete.interestTags.length > 4 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{athlete.interestTags.length - 4}
-                            </Badge>
-                          )}
-                        </div>
-
-                        {/* View Button */}
-                        <Button variant="outline" size="sm">
-                          <Eye size={14} className="mr-1" />
-                          View Profile
-                        </Button>
+                            {/* Actions */}
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // Convert AthleteProfileResponse to Athlete format for the modal
+                                  const athlete: Athlete = {
+                                    id: parseInt(profile.id) || 0,
+                                    firstName: profile.firstName || '',
+                                    lastName: profile.lastName || '',
+                                    email: profile.email || profile.user?.email || '',
+                                  phone: '',
+                                  location: profile.hometown || '',
+                                  dateOfBirth: profile.dateOfBirth || '',
+                                  profileImage: `https://ui-avatars.com/api/?name=${profile.firstName}+${profile.lastName}&background=random&color=fff&size=128`,
+                                  bio: profile.bio || 'No bio available.',
+                                  sport: profile.sport?.toString() || 'N/A',
+                                  position: profile.position || 'N/A',
+                                  school: profile.schoolName || '',
+                                  conference: profile.conference || '',
+                                  teamRanking: '',
+                                  performanceLevel: '',
+                                  seasonStats: {
+                                    gamesPlayed: 0,
+                                    pointsPerGame: 0,
+                                    assistsPerGame: 0,
+                                    reboundsPerGame: 0,
+                                    fieldGoalPct: '0%',
+                                    threePointPct: '0%'
+                                  },
+                                  awards: [],
+                                  socialAccounts: profile.socialAccounts?.map(acc => ({
+                                    platform: acc.platform.toString(),
+                                    handle: acc.handle,
+                                    followers: acc.followers?.toString() || '0'
+                                  })) || [],
+                                  totalFollowers: profile.socialAccounts?.reduce((sum, acc) => sum + (acc.followers || 0), 0).toString() || '0',
+                                  engagementRate: '0%',
+                                  interestTags: [],
+                                  contentTypes: [],
+                                  deals: [],
+                                  status: profile.isActive ? 'active' : 'inactive',
+                                  joinedAt: '',
+                                  profileCompleteness: profile.profileCompletenessScore || profile.completenessScore || 0
+                                };
+                                setSelectedAthlete(athlete);
+                              }}
+                            >
+                              <Eye size={14} className="mr-1" />
+                              View
+                            </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteClick('athlete', profile.id, `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || 'Athlete');
+                                }}
+                                className="text-red-500 hover:text-red-600 hover:border-red-500"
+                              >
+                                <Trash2 size={14} className="mr-1" />
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+                          </motion.div>
+                        ))}
                       </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </TabsContent>
+                    )}
+                  </TabsContent>
+
+                  {/* Brands Tab */}
+                  <TabsContent value="brands">
+                    {isLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
+                      </div>
+                    ) : brandProfiles.length === 0 ? (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <Building2 size={48} className="mx-auto mb-4 opacity-50" />
+                        <p>No brand profiles found.</p>
+                        <p className="text-sm mt-2">Brands will appear here after they complete sign-up.</p>
+                      </div>
+                    ) : (
+                      <div className="grid gap-4">
+                        {brandProfiles
+                          .filter(profile => {
+                            if (!searchTerm) return true;
+                            const search = searchTerm.toLowerCase();
+                            const name = profile.companyName?.toLowerCase() || '';
+                            const industry = profile.industry?.toLowerCase() || '';
+                            const contact = `${profile.contactFirstName || ''} ${profile.contactLastName || ''}`.toLowerCase();
+                            return name.includes(search) || industry.includes(search) || contact.includes(search);
+                          })
+                          .map((profile) => (
+                            <motion.div
+                              key={profile.id}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              className="bg-card rounded-xl border border-border p-6 hover:border-primary/50 transition-colors cursor-pointer"
+                            >
+                              <div className="flex items-start gap-6">
+                                {/* Profile Image Placeholder */}
+                                <div className="w-20 h-20 rounded-full bg-purple-500/20 border-2 border-purple-500 flex items-center justify-center">
+                                  <Building2 size={32} className="text-purple-500" />
+                                </div>
+                                
+                                {/* Basic Info */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-3 mb-1">
+                                    <h3 className="text-xl font-bold">
+                                      {profile.companyName || 'Unknown Company'}
+                                    </h3>
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      profile.isActive ? 'bg-green-500/20 text-green-500' : 'bg-gray-500/20 text-gray-500'
+                                    }`}>
+                                      {profile.isActive ? <CheckCircle size={12} /> : <Clock size={12} />}
+                                      {profile.isActive ? 'active' : 'inactive'}
+                                    </span>
+                                  </div>
+                                  <p className="text-muted-foreground mb-2">
+                                    {profile.industry || 'N/A'} • {profile.companySize || 'N/A'}
+                                  </p>
+                                  <div className="flex items-center gap-4 text-sm">
+                                    {profile.contactFirstName && profile.contactLastName && (
+                                      <span className="text-muted-foreground">
+                                        Contact: <span className="text-foreground font-semibold">{profile.contactFirstName} {profile.contactLastName}</span>
+                                      </span>
+                                    )}
+                                    {profile.contactEmail && (
+                                      <span className="text-muted-foreground text-xs">
+                                        {profile.contactEmail}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-2">
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedBrand(profile as any);
+                                    }}
+                                  >
+                                    <Eye size={14} className="mr-1" />
+                                    View
+                                  </Button>
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteClick('brand', profile.id, profile.companyName || 'Brand');
+                                    }}
+                                    className="text-red-500 hover:text-red-600 hover:border-red-500"
+                                  >
+                                    <Trash2 size={14} className="mr-1" />
+                                    Delete
+                                  </Button>
+                                </div>
+                              </div>
+                            </motion.div>
+                          ))}
+                      </div>
+                    )}
+                  </TabsContent>
 
               {/* Brands Tab */}
               <TabsContent value="brands">
-                <div className="bg-card rounded-xl border border-border overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-muted/50">
-                        <tr>
-                          <th className="text-left p-4 font-semibold">Company</th>
-                          <th className="text-left p-4 font-semibold">Contact</th>
-                          <th className="text-left p-4 font-semibold">Industry</th>
-                          <th className="text-left p-4 font-semibold">Budget</th>
-                          <th className="text-left p-4 font-semibold">Active Deals</th>
-                          <th className="text-left p-4 font-semibold">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {brands.map((brand) => (
-                          <tr key={brand.id} className="border-t border-border hover:bg-muted/30 transition-colors">
-                            <td className="p-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-500 font-bold">
-                                  {brand.company[0]}
-                                </div>
-                                <p className="font-medium">{brand.company}</p>
-                              </div>
-                            </td>
-                            <td className="p-4">
-                              <div>
-                                <p className="font-medium">{brand.contactName}</p>
-                                <p className="text-sm text-muted-foreground">{brand.email}</p>
-                              </div>
-                            </td>
-                            <td className="p-4">{brand.industry}</td>
-                            <td className="p-4">{brand.budget}</td>
-                            <td className="p-4">
-                              <span className="px-2 py-1 rounded-full bg-purple-500/20 text-purple-500 text-sm font-medium">
-                                {brand.activeDeals} deals
-                              </span>
-                            </td>
-                            <td className="p-4">
-                              <Button size="sm" variant="outline" onClick={() => setSelectedBrand(brand)}>
-                                <Eye size={14} className="mr-1" />
-                                View
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-card rounded-xl border border-border overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="text-left p-4 font-semibold">Company</th>
+                            <th className="text-left p-4 font-semibold">Contact</th>
+                            <th className="text-left p-4 font-semibold">Industry</th>
+                            <th className="text-left p-4 font-semibold">Budget</th>
+                            <th className="text-left p-4 font-semibold">Status</th>
+                            <th className="text-left p-4 font-semibold">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {brandRequests
+                            .filter(brand => brand.status === "ACCEPTED" || brand.status === "APPROVED" || brand.status === "INVITED")
+                            .filter(brand => {
+                              if (!searchTerm) return true;
+                              const search = searchTerm.toLowerCase();
+                              return brand.company?.toLowerCase().includes(search) ||
+                                     brand.email?.toLowerCase().includes(search) ||
+                                     brand.industry?.toLowerCase().includes(search);
+                            })
+                            .map((brand) => (
+                              <tr key={brand.id} className="border-t border-border hover:bg-muted/30 transition-colors">
+                                <td className="p-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-500 font-bold">
+                                      {brand.company?.[0]?.toUpperCase() || 'B'}
+                                    </div>
+                                    <p className="font-medium">{brand.company}</p>
+                                  </div>
+                                </td>
+                                <td className="p-4">
+                                  <div>
+                                    <p className="font-medium">{brand.contactFirstName} {brand.contactLastName}</p>
+                                    <p className="text-sm text-muted-foreground">{brand.email}</p>
+                                  </div>
+                                </td>
+                                <td className="p-4">{brand.industry || 'N/A'}</td>
+                                <td className="p-4">{brand.budget || 'N/A'}</td>
+                                <td className="p-4">
+                                  <span className={`px-2 py-1 rounded-full text-sm font-medium ${
+                                    brand.status === "ACCEPTED" ? 'bg-green-500/20 text-green-500' :
+                                    brand.status === "INVITED" ? 'bg-yellow-500/20 text-yellow-500' :
+                                    'bg-gray-500/20 text-gray-500'
+                                  }`}>
+                                    {brand.status}
+                                  </span>
+                                </td>
+                                <td className="p-4">
+                                  <Button size="sm" variant="outline" onClick={() => setSelectedBrandRequest(brand)}>
+                                    <Eye size={14} className="mr-1" />
+                                    View
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          {brandRequests.filter(b => b.status === "ACCEPTED" || b.status === "APPROVED" || b.status === "INVITED").length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="p-12 text-center text-muted-foreground">
+                                <Building2 size={48} className="mx-auto mb-4 opacity-50" />
+                                <p>No active brands found.</p>
+                                <p className="text-sm mt-2">Brands will appear here after they complete sign-up.</p>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </TabsContent>
 
               {/* Athlete Requests Tab */}
@@ -1267,11 +1711,22 @@ const Admin = () => {
               </div>
               {selectedAthleteRequest.status?.toLowerCase() === "pending" && (
                 <div className="flex gap-3">
-                  <Button className="flex-1 bg-green-600 hover:bg-green-700">
-                    <CheckCircle size={16} className="mr-2" /> Approve
+                  <Button 
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    onClick={handleApproveAthlete}
+                    disabled={isUpdating}
+                  >
+                    <CheckCircle size={16} className="mr-2" /> 
+                    {isUpdating ? "Approving..." : "Approve"}
                   </Button>
-                  <Button variant="destructive" className="flex-1">
-                    <XCircle size={16} className="mr-2" /> Reject
+                  <Button 
+                    variant="destructive" 
+                    className="flex-1"
+                    onClick={handleRejectAthlete}
+                    disabled={isUpdating}
+                  >
+                    <XCircle size={16} className="mr-2" /> 
+                    {isUpdating ? "Rejecting..." : "Reject"}
                   </Button>
                 </div>
               )}
@@ -1327,11 +1782,22 @@ const Admin = () => {
               </div>
               {selectedBrandRequest.status?.toLowerCase() === "pending" && (
                 <div className="flex gap-3">
-                  <Button className="flex-1 bg-green-600 hover:bg-green-700">
-                    <CheckCircle size={16} className="mr-2" /> Approve
+                  <Button 
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    onClick={handleApproveBrand}
+                    disabled={isUpdating}
+                  >
+                    <CheckCircle size={16} className="mr-2" /> 
+                    {isUpdating ? "Approving..." : "Approve"}
                   </Button>
-                  <Button variant="destructive" className="flex-1">
-                    <XCircle size={16} className="mr-2" /> Reject
+                  <Button 
+                    variant="destructive" 
+                    className="flex-1"
+                    onClick={handleRejectBrand}
+                    disabled={isUpdating}
+                  >
+                    <XCircle size={16} className="mr-2" /> 
+                    {isUpdating ? "Rejecting..." : "Reject"}
                   </Button>
                 </div>
               )}
@@ -1383,6 +1849,81 @@ const Admin = () => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog - First Step */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-500">
+              <AlertTriangle size={20} />
+              Confirm Deletion
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{itemToDelete?.name}</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 justify-end mt-4">
+            <Button variant="outline" onClick={handleDeleteCancel}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteConfirm}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              Yes, Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog - Second Step (Double Confirmation) */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-500">
+              <AlertTriangle size={20} />
+              Final Confirmation Required
+            </DialogTitle>
+            <DialogDescription>
+              This is your last chance to cancel. Deleting <strong>{itemToDelete?.name}</strong> will permanently remove all their data from the system. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-4">
+            <p className="text-sm text-red-600 font-medium">
+              ⚠️ Warning: This will permanently delete:
+            </p>
+            <ul className="text-sm text-muted-foreground mt-2 list-disc list-inside">
+              <li>All profile information</li>
+              <li>Social media accounts</li>
+              <li>Associated data</li>
+            </ul>
+          </div>
+          <div className="flex gap-3 justify-end">
+            <Button variant="outline" onClick={handleDeleteCancel} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteFinal}
+              disabled={isDeleting}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={16} className="mr-2" />
+                  Delete Permanently
+                </>
+              )}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -69,5 +69,11 @@ public class AthleteIntakeRequest extends BaseEntity {
 
     @Column(name = "reviewed_by", length = 255)
     private String reviewedBy;
+
+    @Column(name = "clerk_invitation_id", length = 255)
+    private String clerkInvitationId;
+
+    @Column(name = "invitation_sent_at")
+    private java.time.Instant invitationSentAt;
 }
 
