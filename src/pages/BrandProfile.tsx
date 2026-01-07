@@ -189,7 +189,7 @@ const BrandProfile = () => {
   }, [isLoaded, getToken]);
 
   const handleSave = async () => {
-    if (!brandProfile || !authToken) {
+    if (!brandProfile) {
       toast({
         title: "Error",
         description: "Unable to save profile. Please try again.",
@@ -200,6 +200,18 @@ const BrandProfile = () => {
 
     setIsSaving(true);
     try {
+      // Refresh token before update to ensure it's valid
+      const freshToken = await getToken();
+      if (!freshToken) {
+        toast({
+          title: "Authentication Error",
+          description: "Please sign in again to continue.",
+          variant: "destructive",
+        });
+        setIsSaving(false);
+        return;
+      }
+
       // Format the data for the API
       const formattedData: BrandProfileUpdateRequest = {
         companyName: formData.companyName || undefined,
@@ -228,11 +240,17 @@ const BrandProfile = () => {
           })),
       };
 
-      await updateBrandProfile(brandProfile.id, formattedData, authToken);
+      await updateBrandProfile(brandProfile.id, formattedData, freshToken);
       
-      // Refresh profile data
-      const updatedProfile = await getMyBrandProfile(authToken);
+      // Refresh profile data with fresh token
+      const updatedToken = await getToken();
+      const updatedProfile = await getMyBrandProfile(updatedToken || freshToken);
       setBrandProfile(updatedProfile);
+      
+      // Update auth token state
+      if (updatedToken) {
+        setAuthToken(updatedToken);
+      }
       
       setIsEditing(false);
       toast({
