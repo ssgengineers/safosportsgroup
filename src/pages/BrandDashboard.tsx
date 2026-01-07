@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Navigation from "@/components/layout/Navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,6 @@ import {
 import { useAuth } from "@clerk/clerk-react";
 import { getUserMe, getMyBrandProfile, getAllAthleteProfiles, updateBrandProfile, UserResponse, BrandProfileResponse, AthleteProfileResponse } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
-import EditBrandProfile from "@/components/EditBrandProfile";
 import { 
   Search,
   Eye,
@@ -108,12 +108,12 @@ type Athlete = {
 const BrandDashboard = () => {
   const { toast } = useToast();
   const { getToken, isLoaded } = useAuth();
+  const navigate = useNavigate();
   const [user, setUser] = useState<UserResponse | null>(null);
   const [brandProfile, setBrandProfile] = useState<BrandProfileResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState("overview");
   const [searchTerm, setSearchTerm] = useState("");
@@ -561,18 +561,27 @@ const BrandDashboard = () => {
             animate={{ opacity: 1, y: 0 }}
             className="mb-8"
           >
-            <div className="flex items-center gap-4 mb-2">
-              <div className="w-14 h-14 rounded-xl bg-primary/20 flex items-center justify-center text-primary text-xl font-bold">
-                {brandProfile.companyName?.[0]?.toUpperCase() || "B"}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-xl bg-primary/20 flex items-center justify-center text-primary text-xl font-bold">
+                  {brandProfile.companyName?.[0]?.toUpperCase() || "B"}
+                </div>
+                <div>
+                  <h1 className="text-3xl md:text-4xl font-black tracking-wider">
+                    {brandProfile.companyName?.toUpperCase() || "BRAND DASHBOARD"}
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Welcome back, {brandProfile.contactFirstName || user.firstName || "Brand"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-3xl md:text-4xl font-black tracking-wider">
-                  {brandProfile.companyName?.toUpperCase() || "BRAND DASHBOARD"}
-                </h1>
-                <p className="text-muted-foreground">
-                  Welcome back, {brandProfile.contactFirstName || user.firstName || "Brand"}
-                </p>
-              </div>
+              <Button
+                variant="outline"
+                onClick={() => navigate("/brand-profile")}
+              >
+                <Building2 size={16} className="mr-2" />
+                Brand Profile
+              </Button>
             </div>
           </motion.div>
 
@@ -622,10 +631,6 @@ const BrandDashboard = () => {
                 <TabsTrigger value="campaigns" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                   <Handshake size={16} className="mr-2" />
                   Campaigns
-                </TabsTrigger>
-                <TabsTrigger value="profile" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                  <Building2 size={16} className="mr-2" />
-                  Brand Profile
                 </TabsTrigger>
                 <TabsTrigger value="preferences" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                   <Target size={16} className="mr-2" />
@@ -1075,143 +1080,6 @@ const BrandDashboard = () => {
                     <div className="text-center py-12 text-muted-foreground">
                       <Handshake size={48} className="mx-auto mb-4 opacity-50" />
                       <p>No campaigns yet. Start by finding athletes to partner with!</p>
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-
-              {/* Brand Profile Tab */}
-              <TabsContent value="profile" className="space-y-6">
-                <div className="bg-card p-6 rounded-xl border border-border">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="font-bold text-lg">Brand Information</h3>
-                    <Button 
-                      variant="outline"
-                      onClick={() => setIsEditModalOpen(true)}
-                    >
-                      <Edit3 size={16} className="mr-2" />
-                      Edit Profile
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-sm font-semibold text-muted-foreground">Company Name</label>
-                        <p className="mt-1 font-medium">{brandProfile.companyName || "N/A"}</p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-sm font-semibold text-muted-foreground">First Name</label>
-                          <p className="mt-1 font-medium">{brandProfile.contactFirstName || "N/A"}</p>
-                        </div>
-                        <div>
-                          <label className="text-sm font-semibold text-muted-foreground">Last Name</label>
-                          <p className="mt-1 font-medium">{brandProfile.contactLastName || "N/A"}</p>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold text-muted-foreground">Job Title</label>
-                        <p className="mt-1 font-medium">{brandProfile.contactTitle || "N/A"}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold text-muted-foreground">Email</label>
-                        <p className="mt-1 font-medium">{brandProfile.contactEmail || brandProfile.email || user?.email || "N/A"}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold text-muted-foreground">Phone</label>
-                        <p className="mt-1 font-medium">{brandProfile.contactPhone || "N/A"}</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-sm font-semibold text-muted-foreground">Website</label>
-                        {brandProfile.website ? (
-                          <a 
-                            href={brandProfile.website} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="mt-1 font-medium text-primary hover:underline flex items-center gap-1"
-                          >
-                            {brandProfile.website}
-                            <ExternalLink size={14} />
-                          </a>
-                        ) : (
-                          <p className="mt-1 font-medium text-muted-foreground">N/A</p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold text-muted-foreground">Industry</label>
-                        <p className="mt-1 font-medium">{brandProfile.industry || "N/A"}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold text-muted-foreground">Company Size</label>
-                        <p className="mt-1 font-medium">{brandProfile.companySize || "N/A"}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold text-muted-foreground">Marketing Budget</label>
-                        <p className="mt-1 font-medium text-green-500">{brandProfile.budgetRange || "N/A"}</p>
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold text-muted-foreground">Description</label>
-                        <p className="mt-1 text-muted-foreground">{brandProfile.description || "N/A"}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Additional Info */}
-                  {(brandProfile.targetAudience || brandProfile.marketingGoals || brandProfile.preferredTimeline) && (
-                    <div className="mt-6 pt-6 border-t border-border space-y-4">
-                      {brandProfile.targetAudience && (
-                        <div>
-                          <label className="text-sm font-semibold text-muted-foreground">Target Audience</label>
-                          <p className="mt-1 text-muted-foreground">{brandProfile.targetAudience}</p>
-                        </div>
-                      )}
-                      {brandProfile.marketingGoals && (
-                        <div>
-                          <label className="text-sm font-semibold text-muted-foreground">Marketing Goals</label>
-                          <p className="mt-1 text-muted-foreground">{brandProfile.marketingGoals}</p>
-                        </div>
-                      )}
-                      {brandProfile.preferredTimeline && (
-                        <div>
-                          <label className="text-sm font-semibold text-muted-foreground">Preferred Timeline</label>
-                          <p className="mt-1 font-medium">{brandProfile.preferredTimeline}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Social Accounts */}
-                  {brandProfile.socialAccounts && brandProfile.socialAccounts.length > 0 && (
-                    <div className="mt-6 pt-6 border-t border-border">
-                      <label className="text-sm font-semibold text-muted-foreground mb-3 block">Social Media Accounts</label>
-                      <div className="space-y-2">
-                        {brandProfile.socialAccounts.map((account, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                            <div className="flex items-center gap-2">
-                              {getSocialIcon(account.platform.toString())}
-                              <span className="text-sm font-medium">{account.handle}</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              {account.followers && (
-                                <span className="text-xs text-muted-foreground">
-                                  {account.followers.toLocaleString()} followers
-                                </span>
-                              )}
-                              {account.profileUrl && (
-                                <Button variant="ghost" size="sm" asChild>
-                                  <a href={account.profileUrl} target="_blank" rel="noopener noreferrer">
-                                    <ExternalLink size={14} />
-                                  </a>
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
                     </div>
                   )}
                 </div>
@@ -1878,36 +1746,6 @@ const BrandDashboard = () => {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Edit Profile Modal */}
-      {brandProfile && authToken && (
-        <EditBrandProfile
-          profile={brandProfile}
-          open={isEditModalOpen}
-          onOpenChange={setIsEditModalOpen}
-          onSuccess={async () => {
-            try {
-              const token = await getToken();
-              if (token) {
-                const updatedProfile = await getMyBrandProfile(token);
-                setBrandProfile(updatedProfile);
-                toast({
-                  title: "Profile updated",
-                  description: "Your brand profile has been successfully updated.",
-                });
-              }
-            } catch (error) {
-              console.error("Failed to refresh profile:", error);
-              toast({
-                title: "Error refreshing profile",
-                description: "Please reload the page to see the latest changes.",
-                variant: "destructive",
-              });
-            }
-          }}
-          token={authToken}
-        />
-      )}
     </div>
   );
 };
