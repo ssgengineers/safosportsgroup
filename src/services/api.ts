@@ -3,6 +3,7 @@
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+const AI_SERVICE_BASE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000/api/v1';
 
 // Helper to get auth headers with Clerk token
 // Note: This should be called from a component that has access to Clerk hooks
@@ -620,6 +621,27 @@ export async function getAllBrandProfiles(page?: number, size?: number, token?: 
 }
 
 /**
+ * Get brand profile by ID
+ */
+export async function getBrandProfileById(brandId: string, token?: string): Promise<BrandProfileResponse> {
+  const headers = await getAuthHeaders(token);
+  const response = await fetch(`${API_BASE_URL}/brands/${brandId}`, {
+    method: 'GET',
+    headers,
+  });
+  
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('Brand profile not found');
+    }
+    const error = await response.json().catch(() => ({ message: 'Failed to fetch brand profile' }));
+    throw new Error(error.message || 'Failed to fetch brand profile');
+  }
+  
+  return response.json();
+}
+
+/**
  * Get current user's brand profile
  */
 export async function getMyBrandProfile(token?: string): Promise<BrandProfileResponse> {
@@ -702,5 +724,186 @@ export async function deleteBrandProfile(profileId: string, token?: string): Pro
     console.error('Failed to delete brand profile:', response.status, errorText);
     throw new Error(`Failed to delete brand profile: ${response.status} ${errorText}`);
   }
+}
+
+// ============= AI Service Types & Functions =============
+
+export interface SimpleMatchRequest {
+  brand_id: string;
+  athlete_ids?: string[];
+  campaign_requirements?: {
+    sport_preferences?: string[];
+    conference_preferences?: string[];
+    min_followers?: number;
+    min_engagement_rate?: number;
+    content_types?: string[];
+    budget_per_athlete?: number;
+  };
+  max_results?: number;
+  use_hybrid?: boolean;
+}
+
+export interface AthleteMatchResult {
+  athlete_id: string;
+  athlete_name?: string;
+  sport?: string;
+  school?: string;
+  match_score: number;
+  match_reasons: string[];
+  concerns?: string[];
+  estimated_reach?: number;
+  suggested_rate?: number;
+  component_scores?: {
+    rule_based?: number;
+    ai_analysis?: number;
+    [key: string]: number | undefined;
+  };
+}
+
+export interface HybridMatchResponse {
+  brand_id: string;
+  brand_name?: string;
+  total_candidates: number;
+  passed_filters: number;
+  ai_analyzed: number;
+  total_matches: number;
+  matches: AthleteMatchResult[];
+  filter_stats?: Record<string, any>;
+  generated_at: string;
+}
+
+export interface MatchResponse {
+  brand_id: string;
+  brand_name?: string;
+  total_candidates: number;
+  total_matches: number;
+  matches: AthleteMatchResult[];
+  generated_at: string;
+}
+
+export interface BrandMatchResult {
+  brand_id: string;
+  company?: string;
+  industry?: string;
+  fit_score: number;
+  match_reasons: string[];
+  concerns?: string[];
+}
+
+export interface AthleteBrandMatchesResponse {
+  athlete_id: string;
+  athlete_name?: string;
+  total_brands: number;
+  matches: BrandMatchResult[];
+  generated_at: string;
+}
+
+export interface AthleteScoreResponse {
+  athlete_id: string;
+  athlete_name?: string;
+  overall_score: number;
+  scores: {
+    profile_quality?: number;
+    social_influence?: number;
+    market_value?: number;
+    nil_readiness?: number;
+    [key: string]: number | undefined;
+  };
+  tier: string;
+  recommendations: string[];
+  calculated_at: string;
+}
+
+/**
+ * Find matching athletes for a brand using hybrid matching (recommended).
+ * @param brandId Brand profile ID or brand intake ID
+ * @param options Optional matching options
+ * @param token Optional Clerk token for authenticated requests
+ */
+export async function findAthleteMatches(
+  brandId: string,
+  options?: {
+    athleteIds?: string[];
+    campaignRequirements?: SimpleMatchRequest['campaign_requirements'];
+    maxResults?: number;
+    useHybrid?: boolean;
+  },
+  token?: string
+): Promise<HybridMatchResponse> {
+  const headers = await getAuthHeaders(token);
+  
+  const request: SimpleMatchRequest = {
+    brand_id: brandId,
+    athlete_ids: options?.athleteIds,
+    campaign_requirements: options?.campaignRequirements,
+    max_results: options?.maxResults || 10,
+    use_hybrid: options?.useHybrid !== false, // Default to true
+  };
+  
+  const response = await fetch(`${AI_SERVICE_BASE_URL}/matching/find-hybrid`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(request),
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Failed to find athlete matches:', response.status, errorText);
+    throw new Error(`Failed to find athlete matches: ${response.status} ${errorText}`);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Find matching brands for an athlete.
+ * @param athleteId Athlete profile ID
+ * @param limit Maximum number of results
+ * @param token Optional Clerk token for authenticated requests
+ */
+export async function findBrandMatches(
+  athleteId: string,
+  limit: number = 10,
+  token?: string
+): Promise<AthleteBrandMatchesResponse> {
+  const headers = await getAuthHeaders(token);
+  
+  const response = await fetch(`${AI_SERVICE_BASE_URL}/matching/athlete/${athleteId}/brands?limit=${limit}`, {
+    method: 'GET',
+    headers,
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Failed to find brand matches:', response.status, errorText);
+    throw new Error(`Failed to find brand matches: ${response.status} ${errorText}`);
+  }
+  
+  return response.json();
+}
+
+/**
+ * Score an athlete profile using AI.
+ * @param athleteId Athlete profile ID
+ * @param token Optional Clerk token for authenticated requests
+ */
+export async function scoreAthlete(
+  athleteId: string,
+  token?: string
+): Promise<AthleteScoreResponse> {
+  const headers = await getAuthHeaders(token);
+  
+  const response = await fetch(`${AI_SERVICE_BASE_URL}/scoring/athlete/${athleteId}`, {
+    method: 'GET',
+    headers,
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Failed to score athlete:', response.status, errorText);
+    throw new Error(`Failed to score athlete: ${response.status} ${errorText}`);
+  }
+  
+  return response.json();
 }
 
