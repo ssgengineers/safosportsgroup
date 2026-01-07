@@ -156,19 +156,35 @@ async def find_athlete_matches_hybrid(request: SimpleMatchRequest):
         data_formatter = DataFormatter()
         rule_engine = RuleEngine()
         
-        # Fetch brand data
+        # Fetch brand data (handles both brand profile and brand intake)
         brand_data = await api_client.get_brand_intake(request.brand_id)
         if not brand_data:
             raise HTTPException(status_code=404, detail=f"Brand not found: {request.brand_id}")
         
+        # Get brand name for response
+        brand_name = brand_data.get("company") or brand_data.get("companyName")
+        
         # Merge campaign requirements into brand data for rule engine
         if request.campaign_requirements:
-            brand_data.update({
-                "preferredSports": request.campaign_requirements.get("sport_preferences", []),
-                "preferredConferences": request.campaign_requirements.get("conference_preferences", []),
-                "minFollowers": request.campaign_requirements.get("min_followers"),
-                "minEngagement": request.campaign_requirements.get("min_engagement_rate"),
-            })
+            # Merge preferences, preferring campaign requirements over existing
+            existing_sports = brand_data.get("preferredSports", [])
+            campaign_sports = request.campaign_requirements.get("sport_preferences", [])
+            if campaign_sports:
+                brand_data["preferredSports"] = campaign_sports
+            elif not existing_sports:
+                brand_data["preferredSports"] = []
+            
+            existing_conferences = brand_data.get("preferredConferences", [])
+            campaign_conferences = request.campaign_requirements.get("conference_preferences", [])
+            if campaign_conferences:
+                brand_data["preferredConferences"] = campaign_conferences
+            elif not existing_conferences:
+                brand_data["preferredConferences"] = []
+            
+            if request.campaign_requirements.get("min_followers"):
+                brand_data["minFollowers"] = request.campaign_requirements.get("min_followers")
+            if request.campaign_requirements.get("min_engagement_rate"):
+                brand_data["minEngagement"] = request.campaign_requirements.get("min_engagement_rate")
         
         # Fetch athletes
         if request.athlete_ids:
@@ -177,10 +193,13 @@ async def find_athlete_matches_hybrid(request: SimpleMatchRequest):
             athletes_response = await api_client.get_all_athletes(size=500)  # Fetch more for filtering
             athletes_raw = athletes_response.get("content", [])
         
+        logger.info(f"Fetched {len(athletes_raw) if athletes_raw else 0} athletes for brand {request.brand_id}")
+        
         if not athletes_raw:
+            logger.warning(f"No athletes found for brand {request.brand_id}")
             return HybridMatchResponse(
                 brand_id=request.brand_id,
-                brand_name=brand_data.get("company"),
+                brand_name=brand_name,
                 total_candidates=0,
                 passed_filters=0,
                 ai_analyzed=0,
@@ -196,12 +215,15 @@ async def find_athlete_matches_hybrid(request: SimpleMatchRequest):
             top_n=20  # Only send top 20 to Claude
         )
         
+        logger.info(f"Rule engine: {stats.get('filter_stats', {}).get('passed', 0)} athletes passed filters, {len(top_candidates)} top candidates")
+        
         if not top_candidates:
+            logger.warning(f"No athletes passed filters for brand {request.brand_id}. Filter stats: {stats.get('filter_stats')}")
             return HybridMatchResponse(
                 brand_id=request.brand_id,
-                brand_name=brand_data.get("company"),
+                brand_name=brand_name,
                 total_candidates=len(athletes_raw),
-                passed_filters=0,
+                passed_filters=stats.get("filter_stats", {}).get("passed", 0),
                 ai_analyzed=0,
                 total_matches=0,
                 matches=[],
@@ -318,7 +340,7 @@ async def find_athlete_matches_hybrid(request: SimpleMatchRequest):
         
         return HybridMatchResponse(
             brand_id=request.brand_id,
-            brand_name=brand_data.get("company"),
+            brand_name=brand_name,
             total_candidates=len(athletes_raw),
             passed_filters=stats.get("filter_stats", {}).get("passed", 0),
             ai_analyzed=len(top_candidates),
@@ -359,10 +381,13 @@ async def find_athlete_matches(request: SimpleMatchRequest):
         claude_client = ClaudeClient()
         data_formatter = DataFormatter()
 
-        # Fetch brand data
+        # Fetch brand data (handles both brand profile and brand intake)
         brand_data = await api_client.get_brand_intake(request.brand_id)
         if not brand_data:
             raise HTTPException(status_code=404, detail=f"Brand not found: {request.brand_id}")
+
+        # Get brand name for response
+        brand_name = brand_data.get("company") or brand_data.get("companyName")
 
         # Format brand data for AI
         brand_formatted = data_formatter.format_brand_campaign(
@@ -382,7 +407,7 @@ async def find_athlete_matches(request: SimpleMatchRequest):
         if not athletes_raw:
             return MatchResponse(
                 brand_id=request.brand_id,
-                brand_name=brand_data.get("company"),
+                brand_name=brand_name,
                 total_candidates=0,
                 total_matches=0,
                 matches=[],
@@ -463,7 +488,7 @@ async def find_athlete_matches(request: SimpleMatchRequest):
 
         return MatchResponse(
             brand_id=request.brand_id,
-            brand_name=brand_data.get("company"),
+            brand_name=brand_name,
             total_candidates=len(athletes_raw),
             total_matches=len(match_results),
             matches=match_results,
@@ -530,8 +555,8 @@ async def get_matching_brands_for_athlete(
 
         athlete_formatted = data_formatter.format_athlete_profile(athlete_data)
 
-        # Fetch all approved brands
-        brands_response = await api_client.get_all_brand_intakes(status="APPROVED", size=50)
+        # Fetch all brand profiles (active brands on the platform)
+        brands_response = await api_client.get_all_brand_profiles(size=50)
         brands = brands_response.get("content", [])
 
         if not brands:
@@ -552,7 +577,7 @@ async def get_matching_brands_for_athlete(
 
                 brand_scores.append({
                     "brand_id": str(brand.get("id", "")),
-                    "company": brand.get("company"),
+                    "company": brand.get("companyName") or brand.get("company"),
                     "industry": brand.get("industry"),
                     "fit_score": result["fit_score"],
                     "match_reasons": result["match_reasons"],

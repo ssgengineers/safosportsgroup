@@ -6,6 +6,8 @@ This allows the AI service to retrieve full profiles using just IDs.
 """
 
 import logging
+import json
+import re
 from typing import Dict, Any, Optional, List
 import httpx
 from app.config import get_settings
@@ -125,17 +127,136 @@ class NILApiClient:
             logger.error(f"Request error fetching athletes: {e}")
             return {"content": [], "totalElements": 0}
 
+    async def get_brand_profile(self, brand_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch a brand profile by ID.
+
+        Args:
+            brand_id: UUID of the brand profile
+
+        Returns:
+            Brand profile data or None if not found
+        """
+        url = f"{self.base_url}/api/v1/brands/{brand_id}"
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url)
+
+                if response.status_code == 200:
+                    return response.json()
+                elif response.status_code == 404:
+                    logger.warning(f"Brand profile not found: {brand_id}")
+                    return None
+                else:
+                    logger.error(f"Failed to fetch brand profile {brand_id}: {response.status_code}")
+                    return None
+
+        except httpx.RequestError as e:
+            logger.error(f"Request error fetching brand profile {brand_id}: {e}")
+            return None
+
     async def get_brand_intake(self, brand_id: str) -> Optional[Dict[str, Any]]:
         """
         Fetch a brand intake request by ID.
+        Also tries to fetch brand profile if intake not found.
 
         Args:
-            brand_id: UUID of the brand intake request
+            brand_id: UUID of the brand intake request or brand profile
 
         Returns:
-            Brand intake data or None if not found
+            Brand intake/profile data or None if not found
         """
-        # Try admin endpoint for brand intake details
+        # First try brand profile (more common in dashboards)
+        brand_profile = await self.get_brand_profile(brand_id)
+        if brand_profile:
+            # Convert brand profile to format compatible with intake
+            # Map brand profile fields to intake format for compatibility
+            
+            # Parse JSON fields if they're strings
+            preferred_sports = brand_profile.get("preferredSports")
+            if isinstance(preferred_sports, str):
+                try:
+                    preferred_sports = json.loads(preferred_sports)
+                except (json.JSONDecodeError, TypeError):
+                    preferred_sports = []
+            elif not isinstance(preferred_sports, list):
+                preferred_sports = []
+            
+            preferred_conferences = brand_profile.get("preferredConferences")
+            if isinstance(preferred_conferences, str):
+                try:
+                    preferred_conferences = json.loads(preferred_conferences)
+                except (json.JSONDecodeError, TypeError):
+                    preferred_conferences = []
+            elif not isinstance(preferred_conferences, list):
+                preferred_conferences = []
+            
+            interest_alignment = brand_profile.get("interestAlignment")
+            if isinstance(interest_alignment, str):
+                try:
+                    interest_alignment = json.loads(interest_alignment)
+                except (json.JSONDecodeError, TypeError):
+                    interest_alignment = []
+            elif not isinstance(interest_alignment, list):
+                interest_alignment = []
+            
+            content_preferences = brand_profile.get("contentPreferences")
+            if isinstance(content_preferences, str):
+                try:
+                    content_preferences = json.loads(content_preferences)
+                except (json.JSONDecodeError, TypeError):
+                    content_preferences = []
+            elif not isinstance(content_preferences, list):
+                content_preferences = []
+            
+            # Parse minFollowers as integer if it's a string
+            min_followers = brand_profile.get("minFollowers")
+            if isinstance(min_followers, str):
+                # Extract numbers from string like "50K" -> 50000
+                numbers = re.findall(r'\d+', min_followers)
+                if numbers:
+                    num = int(numbers[0])
+                    if 'k' in min_followers.lower():
+                        min_followers = num * 1000
+                    else:
+                        min_followers = num
+                else:
+                    min_followers = 0
+            elif not isinstance(min_followers, int):
+                min_followers = 0
+            
+            intake_format = {
+                "id": brand_profile.get("id"),
+                "company": brand_profile.get("companyName"),
+                "contactFirstName": brand_profile.get("contactFirstName"),
+                "contactLastName": brand_profile.get("contactLastName"),
+                "contactTitle": brand_profile.get("contactTitle"),
+                "email": brand_profile.get("contactEmail"),
+                "phone": brand_profile.get("contactPhone"),
+                "website": brand_profile.get("website"),
+                "industry": brand_profile.get("industry"),
+                "companySize": brand_profile.get("companySize"),
+                "budget": brand_profile.get("budgetRange") or brand_profile.get("budgetPerAthlete"),
+                "description": brand_profile.get("description"),
+                "targetAudience": brand_profile.get("targetAudience"),
+                "goals": brand_profile.get("marketingGoals"),
+                "timeline": brand_profile.get("preferredTimeline") or brand_profile.get("dealDuration"),
+                "athletePreferences": brand_profile.get("athletePreferences") or brand_profile.get("matchingNotes"),
+                # Add brand profile specific fields (parsed)
+                "preferredSports": preferred_sports,
+                "preferredConferences": preferred_conferences,
+                "minFollowers": min_followers,
+                "maxFollowers": brand_profile.get("maxFollowers"),
+                "interestAlignment": interest_alignment,
+                "contentPreferences": content_preferences,
+                "budgetPerAthlete": brand_profile.get("budgetPerAthlete"),
+                "dealDuration": brand_profile.get("dealDuration"),
+                "matchingNotes": brand_profile.get("matchingNotes"),
+            }
+            return intake_format
+
+        # Fall back to brand intake endpoint
         url = f"{self.base_url}/api/v1/admin/intakes/brands/{brand_id}"
 
         try:
@@ -154,6 +275,44 @@ class NILApiClient:
         except httpx.RequestError as e:
             logger.error(f"Request error fetching brand {brand_id}: {e}")
             return None
+
+    async def get_all_brand_profiles(
+        self,
+        page: int = 0,
+        size: int = 100
+    ) -> Dict[str, Any]:
+        """
+        Fetch paginated list of brand profiles (active brands on the platform).
+
+        Args:
+            page: Page number (0-indexed)
+            size: Number of results per page
+
+        Returns:
+            Paginated response with content and metadata
+        """
+        url = f"{self.base_url}/api/v1/brands"
+        params = {"page": page, "size": size}
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url, params=params)
+
+                if response.status_code == 200:
+                    # Spring Boot returns Page object, convert to our format
+                    page_data = response.json()
+                    # Spring Boot Page format: {content: [], totalElements: 0, ...}
+                    return {
+                        "content": page_data.get("content", []),
+                        "totalElements": page_data.get("totalElements", 0)
+                    }
+                else:
+                    logger.error(f"Failed to fetch brand profiles: {response.status_code}")
+                    return {"content": [], "totalElements": 0}
+
+        except httpx.RequestError as e:
+            logger.error(f"Request error fetching brand profiles: {e}")
+            return {"content": [], "totalElements": 0}
 
     async def get_all_brand_intakes(
         self,
