@@ -331,11 +331,21 @@ class AthleteProfile:
         platforms = []
         
         for account in social_accounts:
-            # Handle follower count (might be string like "125K")
-            followers = account.get("followers", 0)
+            # Handle follower count - backend returns followerCount, but check both for compatibility
+            # Backend Java returns followerCount (Long), frontend may use followers
+            followers = account.get("followerCount") or account.get("followers", 0)
+            
+            # Handle None values (backend may return null)
+            if followers is None:
+                followers = 0
+            
+            # Handle string format like "125K" (shouldn't happen from backend, but be safe)
             if isinstance(followers, str):
                 followers = AthleteProfile._parse_follower_count(followers)
-            total_followers += followers
+            
+            # Convert to int if it's a number
+            if isinstance(followers, (int, float)):
+                total_followers += int(followers)
             
             platform = account.get("platform")
             if platform:
