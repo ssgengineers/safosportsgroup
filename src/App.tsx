@@ -16,6 +16,7 @@ import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import Admin from "./pages/Admin";
 import BrandDashboard from "./pages/BrandDashboard";
+import BrandProfile from "./pages/BrandProfile";
 import AthleteDashboard from "./pages/AthleteDashboard";
 import NotFound from "./pages/NotFound";
 import ProtectedAdminRoute from "./components/ProtectedAdminRoute";
@@ -45,6 +46,7 @@ const App = () => (
           <Route path="/admin" element={<ProtectedAdminRoute><Admin /></ProtectedAdminRoute>} />
           <Route path="/athlete-dashboard" element={<ProtectedAthleteRoute><AthleteDashboard /></ProtectedAthleteRoute>} />
           <Route path="/brand-dashboard" element={<ProtectedBrandRoute><BrandDashboard /></ProtectedBrandRoute>} />
+          <Route path="/brand-profile" element={<ProtectedBrandRoute><BrandProfile /></ProtectedBrandRoute>} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
