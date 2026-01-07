@@ -5,30 +5,73 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
 const AI_SERVICE_BASE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000/api/v1';
 
+// Type declaration for Clerk on window object
+declare global {
+  interface Window {
+    Clerk?: {
+      session?: {
+        getToken: () => Promise<string | null>;
+        reload: () => Promise<void>;
+      };
+    };
+  }
+}
+
+/**
+ * Get a fresh Clerk token, refreshing if necessary
+ * @param token Optional existing token to use
+ * @returns Fresh token or null if unavailable
+ */
+async function getFreshToken(token?: string): Promise<string | null> {
+  // If token is provided, try to refresh it if Clerk is available
+  if (token && typeof window !== 'undefined' && window.Clerk?.session) {
+    try {
+      // Reload session to refresh token
+      await window.Clerk.session.reload();
+      const freshToken = await window.Clerk.session.getToken();
+      if (freshToken) {
+        return freshToken;
+      }
+    } catch (error) {
+      console.debug('Failed to refresh token, using provided token:', error);
+      // Fall back to provided token
+      return token;
+    }
+  }
+  
+  // If no token provided, try to get from Clerk
+  if (typeof window !== 'undefined' && window.Clerk?.session) {
+    try {
+      // First try to reload session to ensure fresh token
+      await window.Clerk.session.reload();
+      const clerkToken = await window.Clerk.session.getToken();
+      if (clerkToken) {
+        return clerkToken;
+      }
+    } catch (error) {
+      console.debug('Failed to get Clerk token:', error);
+    }
+  }
+  
+  // Return provided token as fallback
+  return token || null;
+}
+
 // Helper to get auth headers with Clerk token
 // Note: This should be called from a component that has access to Clerk hooks
 // For now, we'll accept token as parameter or use window.Clerk if available
-async function getAuthHeaders(token?: string): Promise<HeadersInit> {
+async function getAuthHeaders(token?: string, forceRefresh: boolean = false): Promise<HeadersInit> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
   
-  // Use provided token or try to get from Clerk
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  } else {
-    try {
-      // @ts-ignore - Clerk may not be available in all contexts
-      if (window.Clerk && window.Clerk.session) {
-        const clerkToken = await window.Clerk.session.getToken();
-        if (clerkToken) {
-          headers['Authorization'] = `Bearer ${clerkToken}`;
-        }
-      }
-    } catch (error) {
-      // Clerk not available or not signed in
-      console.debug('Clerk token not available:', error);
-    }
+  // Get fresh token (will refresh if needed)
+  const freshToken = forceRefresh 
+    ? await getFreshToken(token)
+    : token || await getFreshToken();
+  
+  if (freshToken) {
+    headers['Authorization'] = `Bearer ${freshToken}`;
   }
   
   return headers;
@@ -372,7 +415,20 @@ export async function getAllAthleteProfiles(page?: number, size?: number, token?
     throw new Error(`Failed to fetch athlete profiles: ${response.status} ${errorText}`);
   }
   
-  return response.json();
+  const responseData = await response.json();
+  
+  // Map followerCount to followers for compatibility
+  if (responseData.content && Array.isArray(responseData.content)) {
+    responseData.content = responseData.content.map((profile: AthleteProfileResponse) => ({
+      ...profile,
+      socialAccounts: profile.socialAccounts?.map((acc) => ({
+        ...acc,
+        followers: (acc as any).followerCount ?? acc.followers ?? 0,
+      })),
+    }));
+  }
+  
+  return responseData;
 }
 
 /**
@@ -414,7 +470,17 @@ export async function getMyAthleteProfile(token?: string): Promise<AthleteProfil
     throw new Error(error.message || 'Failed to fetch athlete profile');
   }
   
-  return response.json();
+  const profileData = await response.json();
+  
+  // Map followerCount to followers for compatibility
+  if (profileData.socialAccounts && Array.isArray(profileData.socialAccounts)) {
+    profileData.socialAccounts = profileData.socialAccounts.map((acc) => ({
+      ...acc,
+      followers: (acc as any).followerCount ?? acc.followers ?? 0,
+    }));
+  }
+  
+  return profileData;
 }
 
 /**
@@ -458,8 +524,6 @@ export async function updateAthleteProfile(
   data: AthleteProfileUpdateRequest,
   token?: string
 ): Promise<AthleteProfileResponse> {
-  const headers = await getAuthHeaders(token);
-  
   // Transform social accounts to match backend format
   const requestData: any = { ...data };
   if (data.socialAccounts) {
@@ -472,11 +536,25 @@ export async function updateAthleteProfile(
   }
   
   console.log("Sending update request:", requestData);
-  const response = await fetch(`${API_BASE_URL}/athletes/${profileId}`, {
+  
+  // First attempt with current token
+  let headers = await getAuthHeaders(token);
+  let response = await fetch(`${API_BASE_URL}/athletes/${profileId}`, {
     method: 'PUT',
     headers,
     body: JSON.stringify(requestData),
   });
+  
+  // If 401 (Unauthorized), try refreshing token and retry once
+  if (response.status === 401) {
+    console.log("Token expired, refreshing and retrying...");
+    headers = await getAuthHeaders(token, true); // Force refresh
+    response = await fetch(`${API_BASE_URL}/athletes/${profileId}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(requestData),
+    });
+  }
   
   if (!response.ok) {
     const errorText = await response.text();
@@ -488,10 +566,26 @@ export async function updateAthleteProfile(
     } catch {
       errorMessage = errorText || errorMessage;
     }
+    
+    // Provide more helpful error message for auth issues
+    if (response.status === 401) {
+      errorMessage = 'Authentication expired. Please sign out and sign back in.';
+    }
+    
     throw new Error(errorMessage);
   }
   
-  return response.json();
+  const updatedProfile = await response.json();
+  
+  // Map followerCount to followers for compatibility
+  if (updatedProfile.socialAccounts && Array.isArray(updatedProfile.socialAccounts)) {
+    updatedProfile.socialAccounts = updatedProfile.socialAccounts.map((acc) => ({
+      ...acc,
+      followers: (acc as any).followerCount ?? acc.followers ?? 0,
+    }));
+  }
+  
+  return updatedProfile;
 }
 
 // ============= Brand Profile Types & Functions =============
@@ -670,8 +764,6 @@ export async function updateBrandProfile(
   data: BrandProfileUpdateRequest,
   token?: string
 ): Promise<BrandProfileResponse> {
-  const headers = await getAuthHeaders(token);
-  
   // Transform social accounts to match backend format
   const requestData: any = { ...data };
   if (data.socialAccounts) {
@@ -684,11 +776,25 @@ export async function updateBrandProfile(
   }
   
   console.log("Sending brand profile update request:", requestData);
-  const response = await fetch(`${API_BASE_URL}/brands/${profileId}`, {
+  
+  // First attempt with current token
+  let headers = await getAuthHeaders(token);
+  let response = await fetch(`${API_BASE_URL}/brands/${profileId}`, {
     method: 'PUT',
     headers,
     body: JSON.stringify(requestData),
   });
+  
+  // If 401 (Unauthorized), try refreshing token and retry once
+  if (response.status === 401) {
+    console.log("Token expired, refreshing and retrying...");
+    headers = await getAuthHeaders(token, true); // Force refresh
+    response = await fetch(`${API_BASE_URL}/brands/${profileId}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(requestData),
+    });
+  }
   
   if (!response.ok) {
     const errorText = await response.text();
@@ -700,6 +806,12 @@ export async function updateBrandProfile(
     } catch {
       errorMessage = errorText || errorMessage;
     }
+    
+    // Provide more helpful error message for auth issues
+    if (response.status === 401) {
+      errorMessage = 'Authentication expired. Please sign out and sign back in.';
+    }
+    
     throw new Error(errorMessage);
   }
   
