@@ -23,7 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@clerk/clerk-react";
-import { getUserMe, getMyAthleteProfile, getAllBrandProfiles, UserResponse, AthleteProfileResponse, BrandProfileResponse } from "@/services/api";
+import { getUserMe, getMyAthleteProfile, getAllBrandProfiles, findBrandMatches, getBrandProfileById, UserResponse, AthleteProfileResponse, BrandProfileResponse, BrandMatchResult } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 import {
   User,
@@ -138,6 +138,11 @@ const AthleteDashboard = () => {
   const [isAISearching, setIsAISearching] = useState(false);
   const [aiSearchResults, setAISearchResults] = useState<Array<Brand & { matchScore: number; matchReasons: string[] }>>([]);
   const [savedBrands, setSavedBrands] = useState<string[]>([]);
+  
+  // Brand details modal state
+  const [selectedBrand, setSelectedBrand] = useState<BrandProfileResponse | null>(null);
+  const [showBrandModal, setShowBrandModal] = useState(false);
+  const [loadingBrand, setLoadingBrand] = useState(false);
 
   // Helper function to map API response to UI format
   const mapBrandProfileToUI = (profile: BrandProfileResponse): Brand => {
@@ -234,65 +239,8 @@ const AthleteDashboard = () => {
     }
   }, [authToken, loading, user, athleteProfile]);
 
-  // AI Matching function for brands
-  const calculateMatchScore = (brand: Brand, prefs: typeof preferencesData, athlete: AthleteProfileResponse | null): { score: number; reasons: string[] } => {
-    let score = 0;
-    const reasons: string[] = [];
-
-    if (prefs.preferredIndustries.length > 0 && brand.industry) {
-      if (prefs.preferredIndustries.some(ind => ind.toLowerCase() === brand.industry?.toLowerCase())) {
-        score += 25;
-        reasons.push(`Industry match: ${brand.industry}`);
-      }
-    }
-
-    // Match based on athlete's sport if brand has preferences
-    if (athlete?.sport && brand.targetAudience) {
-      const targetLower = brand.targetAudience.toLowerCase();
-      const sportLower = athlete.sport.toLowerCase();
-      if (targetLower.includes(sportLower) || sportLower.includes(targetLower)) {
-        score += 20;
-        reasons.push(`Sport alignment: ${athlete.sport}`);
-      }
-    }
-
-    // Budget range matching
-    if (prefs.minBudget && prefs.maxBudget && brand.budgetRange) {
-      // Simple budget matching (could be enhanced)
-      score += 15;
-      reasons.push(`Budget available: ${brand.budgetRange}`);
-    }
-
-    // Interest alignment (if brand has marketing goals that align)
-    if (prefs.interestAlignment.length > 0 && brand.marketingGoals) {
-      const goalsLower = brand.marketingGoals.toLowerCase();
-      const interestMatches = prefs.interestAlignment.filter(interest =>
-        goalsLower.includes(interest.toLowerCase())
-      );
-      if (interestMatches.length > 0) {
-        const interestScore = Math.min(interestMatches.length * 10, 25);
-        score += interestScore;
-        reasons.push(`Interest alignment: ${interestMatches.slice(0, 2).join(", ")}`);
-      }
-    }
-
-    // Content type matching
-    if (prefs.contentTypes.length > 0 && brand.description) {
-      const descLower = brand.description.toLowerCase();
-      const contentMatches = prefs.contentTypes.filter(content =>
-        descLower.includes(content.toLowerCase())
-      );
-      if (contentMatches.length > 0) {
-        score += 15;
-        reasons.push(`Content match: ${contentMatches[0]}`);
-      }
-    }
-
-    return { score: Math.min(score, 100), reasons };
-  };
-
-  const runAISearch = () => {
-    if (!athleteProfile) {
+  const runAISearch = async () => {
+    if (!athleteProfile || !authToken) {
       toast({
         title: "Profile Required",
         description: "Please complete your profile before using AI matching.",
@@ -305,20 +253,50 @@ const AthleteDashboard = () => {
     setIsAISearching(true);
     setAISearchResults([]);
 
-    setTimeout(() => {
-      const scoredBrands = allBrands.map(brand => {
-        const { score, reasons } = calculateMatchScore(brand, preferencesData, athleteProfile);
-        return {
-          ...brand,
-          matchScore: score,
-          matchReasons: reasons
-        };
+    try {
+      // Call AI service to find matching brands
+      const response = await findBrandMatches(athleteProfile.id, 20, authToken);
+
+      // Map AI service results to UI format
+      const mappedResults = response.matches.map((match: BrandMatchResult) => {
+        // Find the original brand data
+        const originalBrand = allBrands.find(b => b.id === match.brand_id);
+        
+        if (originalBrand) {
+          return {
+            ...originalBrand,
+            matchScore: match.fit_score,
+            matchReasons: match.match_reasons || [],
+          };
+        } else {
+          // If brand not in local list, create a basic entry
+          return {
+            id: match.brand_id,
+            companyName: match.company || 'Unknown Brand',
+            industry: match.industry,
+            companySize: undefined,
+            website: undefined,
+            description: undefined,
+            budgetRange: undefined,
+            targetAudience: undefined,
+            marketingGoals: undefined,
+            matchScore: match.fit_score,
+            matchReasons: match.match_reasons || [],
+          };
+        }
       });
 
-      scoredBrands.sort((a, b) => b.matchScore - a.matchScore);
-      setAISearchResults(scoredBrands);
+      setAISearchResults(mappedResults);
+    } catch (error) {
+      console.error("Failed to perform AI search:", error);
+      toast({
+        title: "AI Search Failed",
+        description: error instanceof Error ? error.message : "Failed to find brand matches. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
       setIsAISearching(false);
-    }, 2000);
+    }
   };
 
   const toggleSavedBrand = (brandId: string) => {
@@ -330,6 +308,28 @@ const AthleteDashboard = () => {
   };
 
   const isSaved = (brandId: string) => savedBrands.includes(brandId);
+
+  const handleViewBrand = async (brandId: string) => {
+    if (!authToken) return;
+    
+    setLoadingBrand(true);
+    setShowBrandModal(true);
+    
+    try {
+      const brandProfile = await getBrandProfileById(brandId, authToken);
+      setSelectedBrand(brandProfile);
+    } catch (error) {
+      console.error("Failed to fetch brand details:", error);
+      toast({
+        title: "Failed to Load Brand",
+        description: error instanceof Error ? error.message : "Could not load brand details. Please try again.",
+        variant: "destructive",
+      });
+      setShowBrandModal(false);
+    } finally {
+      setLoadingBrand(false);
+    }
+  };
 
   const totalFollowers = athleteProfile?.socialAccounts?.reduce((sum, acc) => sum + (acc.followers || 0), 0) || 0;
 
@@ -1042,6 +1042,10 @@ const AthleteDashboard = () => {
                             size="sm"
                             variant="outline"
                             className="h-8"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewBrand(brand.id);
+                            }}
                           >
                             <Eye size={14} className="mr-1" />
                             View
@@ -1065,6 +1069,159 @@ const AthleteDashboard = () => {
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Brand Details Modal */}
+      <Dialog open={showBrandModal} onOpenChange={setShowBrandModal}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 size={20} />
+              Brand Details
+            </DialogTitle>
+            <DialogDescription>
+              View detailed information about this brand
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingBrand ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 size={32} className="animate-spin text-primary" />
+            </div>
+          ) : selectedBrand ? (
+            <div className="space-y-6">
+              {/* Brand Header */}
+              <div className="flex items-start gap-4 pb-4 border-b">
+                <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center text-primary text-2xl font-bold">
+                  {selectedBrand.companyName?.[0]?.toUpperCase() || "B"}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold mb-1">{selectedBrand.companyName}</h3>
+                  {selectedBrand.industry && (
+                    <p className="text-muted-foreground">{selectedBrand.industry}</p>
+                  )}
+                  {selectedBrand.website && (
+                    <a
+                      href={selectedBrand.website.startsWith('http') ? selectedBrand.website : `https://${selectedBrand.website}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline text-sm mt-1 inline-flex items-center gap-1"
+                    >
+                      <ExternalLink size={14} />
+                      {selectedBrand.website}
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Company Info */}
+              <div className="grid grid-cols-2 gap-4">
+                {selectedBrand.companySize && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Company Size</p>
+                    <p className="font-medium">{selectedBrand.companySize}</p>
+                  </div>
+                )}
+                {selectedBrand.industry && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Industry</p>
+                    <p className="font-medium">{selectedBrand.industry}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Description */}
+              {selectedBrand.description && (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">About</p>
+                  <p className="text-sm">{selectedBrand.description}</p>
+                </div>
+              )}
+
+              {/* Target Audience */}
+              {selectedBrand.targetAudience && (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Target Audience</p>
+                  <p className="text-sm">{selectedBrand.targetAudience}</p>
+                </div>
+              )}
+
+              {/* Marketing Goals */}
+              {selectedBrand.marketingGoals && (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Marketing Goals</p>
+                  <p className="text-sm">{selectedBrand.marketingGoals}</p>
+                </div>
+              )}
+
+              {/* Contact Info */}
+              {(selectedBrand.contactFirstName || selectedBrand.contactEmail || selectedBrand.contactPhone) && (
+                <div className="pt-4 border-t">
+                  <p className="text-sm font-semibold mb-3">Contact Information</p>
+                  <div className="space-y-2">
+                    {(selectedBrand.contactFirstName || selectedBrand.contactLastName) && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <User size={16} className="text-muted-foreground" />
+                        <span>{selectedBrand.contactFirstName} {selectedBrand.contactLastName}</span>
+                        {selectedBrand.contactTitle && (
+                          <span className="text-muted-foreground">• {selectedBrand.contactTitle}</span>
+                        )}
+                      </div>
+                    )}
+                    {selectedBrand.contactEmail && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Mail size={16} className="text-muted-foreground" />
+                        <a href={`mailto:${selectedBrand.contactEmail}`} className="text-primary hover:underline">
+                          {selectedBrand.contactEmail}
+                        </a>
+                      </div>
+                    )}
+                    {selectedBrand.contactPhone && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Phone size={16} className="text-muted-foreground" />
+                        <a href={`tel:${selectedBrand.contactPhone}`} className="text-primary hover:underline">
+                          {selectedBrand.contactPhone}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Budget & Timeline */}
+              {(selectedBrand.budgetRange || selectedBrand.preferredTimeline) && (
+                <div className="pt-4 border-t">
+                  <p className="text-sm font-semibold mb-3">Partnership Details</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    {selectedBrand.budgetRange && (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Budget Range</p>
+                        <p className="font-medium">{selectedBrand.budgetRange}</p>
+                      </div>
+                    )}
+                    {selectedBrand.preferredTimeline && (
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Preferred Timeline</p>
+                        <p className="font-medium">{selectedBrand.preferredTimeline}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Close Button */}
+              <div className="pt-4 border-t">
+                <Button variant="outline" onClick={() => setShowBrandModal(false)} className="w-full">
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>No brand details available</p>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

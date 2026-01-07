@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@clerk/clerk-react";
-import { getUserMe, getMyBrandProfile, getAllAthleteProfiles, updateBrandProfile, UserResponse, BrandProfileResponse, AthleteProfileResponse } from "@/services/api";
+import { getUserMe, getMyBrandProfile, getAllAthleteProfiles, updateBrandProfile, findAthleteMatches, UserResponse, BrandProfileResponse, AthleteProfileResponse, AthleteMatchResult } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Search,
@@ -150,6 +150,7 @@ const BrandDashboard = () => {
   const [showAISearchModal, setShowAISearchModal] = useState(false);
   const [isAISearching, setIsAISearching] = useState(false);
   const [aiSearchResults, setAISearchResults] = useState<Array<Athlete & { matchScore: number; matchReasons: string[] }>>([]);
+  const [searchStats, setSearchStats] = useState<{ totalCandidates: number; passedFilters: number } | null>(null);
 
   // Helper function to map API response to UI format
   const mapAthleteProfileToUI = (profile: AthleteProfileResponse): Athlete => {
@@ -370,75 +371,109 @@ const BrandDashboard = () => {
     }
   };
 
-  // AI Matching function
-  const calculateMatchScore = (athlete: Athlete, prefs: typeof preferencesData): { score: number; reasons: string[] } => {
-    let score = 0;
-    const reasons: string[] = [];
-
-    if (prefs.preferredSports.some(s => s.toLowerCase() === athlete.sport.toLowerCase())) {
-      score += 25;
-      reasons.push(`Sport match: ${athlete.sport}`);
+  const runAISearch = async () => {
+    if (!brandProfile || !authToken) {
+      toast({
+        title: "Error",
+        description: "Unable to perform AI search. Please ensure you're logged in and have a brand profile.",
+        variant: "destructive",
+      });
+      return;
     }
 
-    if (prefs.preferredConferences.some(c => c.toLowerCase() === athlete.conference.toLowerCase())) {
-      score += 15;
-      reasons.push(`Conference: ${athlete.conference}`);
-    }
-
-    const athleteFollowers = parseInt(athlete.totalFollowers.replace(/[^0-9]/g, "")) * 1000;
-    const minFollowers = parseInt(prefs.minFollowers.replace(/[^0-9]/g, "")) * 1000;
-    const maxFollowers = parseInt(prefs.maxFollowers.replace(/[^0-9]/g, "")) * 1000;
-    if (athleteFollowers >= minFollowers && athleteFollowers <= maxFollowers) {
-      score += 20;
-      reasons.push(`Followers in range: ${athlete.totalFollowers}`);
-    }
-
-    const interestMatches = athlete.interestTags.filter(tag =>
-      prefs.interestAlignment.some(interest => 
-        tag.toLowerCase().includes(interest.toLowerCase()) || 
-        interest.toLowerCase().includes(tag.toLowerCase())
-      )
-    );
-    if (interestMatches.length > 0) {
-      const interestScore = Math.min(interestMatches.length * 8, 25);
-      score += interestScore;
-      reasons.push(`Interest alignment: ${interestMatches.slice(0, 3).join(", ")}`);
-    }
-
-    const contentMatches = athlete.contentTypes.filter(type =>
-      prefs.contentPreferences.some(pref => 
-        type.toLowerCase().includes(pref.toLowerCase()) || 
-        pref.toLowerCase().includes(type.toLowerCase())
-      )
-    );
-    if (contentMatches.length > 0) {
-      const contentScore = Math.min(contentMatches.length * 5, 15);
-      score += contentScore;
-      reasons.push(`Content match: ${contentMatches.slice(0, 2).join(", ")}`);
-    }
-
-    return { score: Math.min(score, 100), reasons };
-  };
-
-  const runAISearch = () => {
     setShowAISearchModal(true);
     setIsAISearching(true);
     setAISearchResults([]);
+    setSearchStats(null);
 
-    setTimeout(() => {
-      const scoredAthletes = allAthletes.map(athlete => {
-        const { score, reasons } = calculateMatchScore(athlete, preferencesData);
-        return {
-          ...athlete,
-          matchScore: score,
-          matchReasons: reasons
-        };
+    try {
+      // Parse preferences to numbers where needed
+      const minFollowersNum = preferencesData.minFollowers 
+        ? parseInt(preferencesData.minFollowers.replace(/[^0-9]/g, "")) * 1000 
+        : undefined;
+      const maxFollowersNum = preferencesData.maxFollowers 
+        ? parseInt(preferencesData.maxFollowers.replace(/[^0-9]/g, "")) * 1000 
+        : undefined;
+
+      // Call AI service
+      const response = await findAthleteMatches(
+        brandProfile.id,
+        {
+          campaignRequirements: {
+            sport_preferences: preferencesData.preferredSports.length > 0 ? preferencesData.preferredSports : undefined,
+            conference_preferences: preferencesData.preferredConferences.length > 0 ? preferencesData.preferredConferences : undefined,
+            min_followers: minFollowersNum,
+            content_types: preferencesData.contentPreferences.length > 0 ? preferencesData.contentPreferences : undefined,
+            budget_per_athlete: preferencesData.budgetPerAthlete 
+              ? parseFloat(preferencesData.budgetPerAthlete.replace(/[^0-9.]/g, "")) 
+              : undefined,
+          },
+          maxResults: 20,
+          useHybrid: true, // Use hybrid matching for better performance
+        },
+        authToken
+      );
+
+      console.log("AI Matching Response:", response);
+      
+      // Store search statistics
+      setSearchStats({
+        totalCandidates: response?.total_candidates || 0,
+        passedFilters: response?.passed_filters || 0,
+      });
+      
+      // Check if response has matches
+      if (!response || !response.matches || response.matches.length === 0) {
+        setAISearchResults([]);
+        return;
+      }
+
+      // Map AI service results to UI format
+      const mappedResults = response.matches.map((match: AthleteMatchResult) => {
+        // Find the original athlete data
+        const originalAthlete = allAthletes.find(a => a.id === match.athlete_id);
+        
+        if (originalAthlete) {
+          return {
+            ...originalAthlete,
+            matchScore: match.match_score,
+            matchReasons: match.match_reasons || [],
+          };
+        } else {
+          // If athlete not in local list, create a basic entry
+          return {
+            id: match.athlete_id,
+            firstName: match.athlete_name?.split(' ')[0] || 'Unknown',
+            lastName: match.athlete_name?.split(' ').slice(1).join(' ') || '',
+            sport: match.sport || 'N/A',
+            position: 'N/A',
+            school: match.school || 'Unknown',
+            conference: undefined,
+            totalFollowers: match.estimated_reach ? `${Math.floor(match.estimated_reach / 1000)}K` : '0',
+            engagementRate: undefined,
+            socialAccounts: [],
+            seasonStats: {},
+            awards: [],
+            interestTags: [],
+            contentTypes: [],
+            status: 'active',
+            matchScore: match.match_score,
+            matchReasons: match.match_reasons || [],
+          };
+        }
       });
 
-      scoredAthletes.sort((a, b) => b.matchScore - a.matchScore);
-      setAISearchResults(scoredAthletes);
+      setAISearchResults(mappedResults);
+    } catch (error) {
+      console.error("Failed to perform AI search:", error);
+      toast({
+        title: "AI Search Failed",
+        description: error instanceof Error ? error.message : "Failed to find athlete matches. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
       setIsAISearching(false);
-    }, 2000);
+    }
   };
 
   const toggleBookmark = (athleteId: string) => {
@@ -1628,6 +1663,51 @@ const BrandDashboard = () => {
                 <p className="text-muted-foreground text-center max-w-md">
                   Our AI is evaluating {allAthletes.length} athletes based on your preferences for sports, conferences, follower count, interests, and content types.
                 </p>
+              </div>
+            ) : aiSearchResults.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mb-6">
+                  <Search className="w-10 h-10 text-muted-foreground" />
+                </div>
+                <h3 className="text-xl font-bold mb-2">No Matches Found</h3>
+                <p className="text-muted-foreground text-center max-w-md mb-6">
+                  {searchStats ? (
+                    <>
+                      We searched <span className="font-semibold text-foreground">{searchStats.totalCandidates}</span> athletes, 
+                      but <span className="font-semibold text-foreground">{searchStats.passedFilters}</span> passed your current filters.
+                      <br /><br />
+                      Try adjusting your preferences to find more matches:
+                    </>
+                  ) : (
+                    "No athletes matched your current search criteria. Try adjusting your preferences to find more matches."
+                  )}
+                </p>
+                <div className="flex flex-col gap-3 w-full max-w-md">
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                    <p className="text-sm font-semibold mb-2">Suggestions:</p>
+                    <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                      <li>Lower or remove minimum follower requirements</li>
+                      <li>Expand your preferred sports or conferences</li>
+                      <li>Adjust content type preferences</li>
+                      <li>Check your budget per athlete settings</li>
+                    </ul>
+                  </div>
+                  <div className="flex gap-3 justify-center">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setShowAISearchModal(false);
+                        setActiveTab("preferences");
+                      }}
+                    >
+                      <Settings size={16} className="mr-2" />
+                      Edit Preferences
+                    </Button>
+                    <Button variant="default" onClick={() => setShowAISearchModal(false)}>
+                      Close
+                    </Button>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
