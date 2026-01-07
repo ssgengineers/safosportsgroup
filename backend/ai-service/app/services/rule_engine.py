@@ -11,6 +11,8 @@ This hybrid approach:
 """
 
 import logging
+import json
+import re
 from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
@@ -133,16 +135,42 @@ class BrandCriteria:
         
         # Try to extract sports from structured field or preferences text
         preferred_sports = brand_data.get("preferredSports", [])
-        if not preferred_sports:
+        # Handle JSON string format
+        if isinstance(preferred_sports, str):
+            try:
+                preferred_sports = json.loads(preferred_sports)
+            except (json.JSONDecodeError, TypeError):
+                preferred_sports = []
+        if not preferred_sports or (isinstance(preferred_sports, list) and len(preferred_sports) == 0):
             # Try to parse from athletePreferences text
             preferences_text = brand_data.get("athletePreferences", "").lower()
             preferred_sports = cls._extract_sports_from_text(preferences_text)
         
         # Get conferences (structured or empty)
         preferred_conferences = brand_data.get("preferredConferences", [])
+        # Handle JSON string format
+        if isinstance(preferred_conferences, str):
+            try:
+                preferred_conferences = json.loads(preferred_conferences)
+            except (json.JSONDecodeError, TypeError):
+                preferred_conferences = []
         
         # Get follower minimum (structured or default based on budget)
         min_followers = brand_data.get("minFollowers", 0)
+        # Handle string format like "50K" -> 50000
+        if isinstance(min_followers, str):
+            numbers = re.findall(r'\d+', min_followers)
+            if numbers:
+                num = int(numbers[0])
+                if 'k' in min_followers.lower():
+                    min_followers = num * 1000
+                else:
+                    min_followers = num
+            else:
+                min_followers = 0
+        elif not isinstance(min_followers, int):
+            min_followers = 0
+        
         if not min_followers:
             # Default based on budget tier
             min_followers = {

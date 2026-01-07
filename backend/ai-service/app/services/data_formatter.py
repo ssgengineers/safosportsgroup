@@ -69,23 +69,43 @@ class DataFormatter:
     ) -> Dict[str, Any]:
         """
         Format brand and campaign data for AI analysis.
+        Handles both brand intake and brand profile formats.
         
         Args:
-            brand_data: Brand information
+            brand_data: Brand information (intake or profile)
             campaign_data: Optional campaign-specific requirements
             
         Returns:
             Formatted dictionary optimized for AI prompts
         """
+        # Handle both brand intake and brand profile formats
+        company_name = brand_data.get("company") or brand_data.get("companyName")
+        target_audience = brand_data.get("targetAudience") or brand_data.get("target_audience")
+        goals = brand_data.get("goals") or brand_data.get("marketingGoals")
+        
         formatted = {
             "brand_id": brand_data.get("id") or brand_data.get("brand_id"),
-            "company": brand_data.get("company"),
+            "company": company_name,
             "industry": brand_data.get("industry"),
             "description": brand_data.get("description"),
-            "target_audience": brand_data.get("targetAudience") or brand_data.get("target_audience"),
-            "goals": brand_data.get("goals"),
+            "target_audience": target_audience,
+            "goals": goals,
             "values": brand_data.get("brandValues") or brand_data.get("brand_values", []),
         }
+        
+        # Add brand profile specific preferences if available
+        if brand_data.get("preferredSports"):
+            formatted["preferred_sports"] = DataFormatter._parse_json_field(brand_data, "preferredSports") or []
+        if brand_data.get("preferredConferences"):
+            formatted["preferred_conferences"] = DataFormatter._parse_json_field(brand_data, "preferredConferences") or []
+        if brand_data.get("interestAlignment"):
+            formatted["interest_alignment"] = DataFormatter._parse_json_field(brand_data, "interestAlignment") or []
+        if brand_data.get("contentPreferences"):
+            formatted["content_preferences"] = DataFormatter._parse_json_field(brand_data, "contentPreferences") or []
+        if brand_data.get("budgetPerAthlete"):
+            formatted["budget_per_athlete"] = brand_data.get("budgetPerAthlete")
+        if brand_data.get("matchingNotes"):
+            formatted["matching_notes"] = brand_data.get("matchingNotes")
         
         if campaign_data:
             formatted["campaign"] = {
