@@ -2,7 +2,11 @@
  * API Service for connecting to the backend
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+// In production, use Vercel proxy (/api/v1 -> AWS backend)
+// In development, use localhost
+const API_BASE_URL = import.meta.env.VITE_API_URL || (
+  import.meta.env.PROD ? '/api/v1' : 'http://localhost:8080/api/v1'
+);
 const AI_SERVICE_BASE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000/api/v1';
 
 // Type declaration for Clerk on window object
