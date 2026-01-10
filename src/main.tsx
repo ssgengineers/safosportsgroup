@@ -97,12 +97,6 @@ createRoot(document.getElementById("root")!).render(
           userButtonPopoverFooter: {
             display: "none",
           },
-          footerAction: {
-            display: "none",
-          },
-          signUp: {
-            display: "none",
-          },
         },
         signIn: {
           variables: {
