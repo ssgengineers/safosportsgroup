@@ -42,7 +42,9 @@ public class SecurityConfig {
                     "http://localhost:3002",
                     "http://localhost:8080",
                     "https://safosportsgroup.com",
-                    "https://*.safosportsgroup.com"
+                    "https://*.safosportsgroup.com",
+                    "https://safosportsgroup-gamma.vercel.app",
+                    "https://*.vercel.app"
                 ));
                 config.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
                 config.setAllowedHeaders(java.util.List.of("*"));

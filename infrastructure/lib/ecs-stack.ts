@@ -65,6 +65,23 @@ export class EcsStack extends cdk.Stack {
     );
     clerkSecret.grantRead(taskExecutionRole);
 
+    // Reference AI service secrets
+    const anthropicSecret = secretsmanager.Secret.fromSecretNameV2(
+      this, 'AnthropicSecret', 'ssg/anthropic-api-key'
+    );
+    anthropicSecret.grantRead(taskExecutionRole);
+
+    const cfbdSecret = secretsmanager.Secret.fromSecretNameV2(
+      this, 'CfbdSecret', 'ssg/cfbd-api-key'
+    );
+    cfbdSecret.grantRead(taskExecutionRole);
+
+    // Reference AI service ECR repository
+    const aiServiceRepo = ecr.Repository.fromRepositoryName(
+      this, 'AiServiceRepo', 'ssg-ai-service'
+    );
+    aiServiceRepo.grantPull(taskExecutionRole);
+
     // Grant access to ECR
     ecrStack.repository.grantPull(taskExecutionRole);
 
@@ -212,6 +229,111 @@ export class EcsStack extends cdk.Stack {
       scaleOutCooldown: cdk.Duration.seconds(60),
     });
 
+    // ============================================
+    // AI SERVICE (Python/FastAPI)
+    // ============================================
+
+    // Create CloudWatch Log Group for AI Service
+    const aiLogGroup = new logs.LogGroup(this, 'AiLogGroup', {
+      logGroupName: '/ecs/ssg-ai-service',
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Build database URL for AI service
+    const dbHost = rdsStack.databaseEndpoint;
+    const dbPort = rdsStack.databasePort.toString();
+    const dbName = rdsStack.databaseName;
+
+    // Create Task Definition for AI Service
+    const aiTaskDefinition = new ecs.FargateTaskDefinition(this, 'AiTaskDefinition', {
+      memoryLimitMiB: 1024, // 1GB - AI service is lighter
+      cpu: 512, // 0.5 vCPU
+      executionRole: taskExecutionRole,
+      taskRole: taskRole,
+    });
+
+    // Add AI container to task definition
+    const aiContainer = aiTaskDefinition.addContainer('AiServiceContainer', {
+      image: ecs.ContainerImage.fromEcrRepository(aiServiceRepo, 'latest'),
+      logging: ecs.LogDrivers.awsLogs({
+        streamPrefix: 'ssg-ai',
+        logGroup: aiLogGroup,
+      }),
+      environment: {
+        DEBUG: 'false',
+        MAIN_API_URL: `http://${this.loadBalancer.loadBalancerDnsName}`,
+        DATABASE_URL: `postgresql://nil_admin:PLACEHOLDER@${dbHost}:${dbPort}/${dbName}`,
+      },
+      secrets: {
+        ANTHROPIC_API_KEY: ecs.Secret.fromSecretsManager(anthropicSecret),
+        CFBD_API_KEY: ecs.Secret.fromSecretsManager(cfbdSecret),
+      },
+      healthCheck: {
+        command: [
+          'CMD-SHELL',
+          'python -c "import urllib.request; urllib.request.urlopen(\'http://localhost:8000/api/v1/health\')" || exit 1',
+        ],
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(10),
+        retries: 3,
+        startPeriod: cdk.Duration.seconds(30),
+      },
+    });
+
+    // Add port mapping for AI service
+    aiContainer.addPortMappings({
+      containerPort: 8000,
+      protocol: ecs.Protocol.TCP,
+    });
+
+    // Create Target Group for AI Service
+    const aiTargetGroup = new elbv2.ApplicationTargetGroup(this, 'AiTargetGroup', {
+      vpc: vpcStack.vpc,
+      port: 8000,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      targetType: elbv2.TargetType.IP,
+      healthCheck: {
+        path: '/api/v1/health',
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(10),
+        healthyThresholdCount: 2,
+        unhealthyThresholdCount: 3,
+        healthyHttpCodes: '200',
+      },
+      deregistrationDelay: cdk.Duration.seconds(30),
+    });
+
+    // Add path-based routing for AI service endpoints
+    httpListener.addTargetGroups('AiServiceTarget', {
+      targetGroups: [aiTargetGroup],
+      priority: 10,
+      conditions: [
+        elbv2.ListenerCondition.pathPatterns([
+          '/api/v1/matching/*',
+          '/api/v1/scoring/*',
+          '/api/v1/leverage/*',
+        ]),
+      ],
+    });
+
+    // Create ECS Service for AI
+    const aiService = new ecs.FargateService(this, 'AiService', {
+      cluster: this.cluster,
+      taskDefinition: aiTaskDefinition,
+      desiredCount: 1, // Start with 1 task for AI service
+      assignPublicIp: false,
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+      },
+      securityGroups: [vpcStack.ecsSecurityGroup],
+      healthCheckGracePeriod: cdk.Duration.seconds(60),
+      enableExecuteCommand: true,
+    });
+
+    // Attach AI service to target group
+    aiService.attachToApplicationTargetGroup(aiTargetGroup);
+
     // Get load balancer DNS name
     this.loadBalancerDns = this.loadBalancer.loadBalancerDnsName;
 
@@ -238,6 +360,12 @@ export class EcsStack extends cdk.Stack {
       value: this.service.serviceName,
       description: 'ECS Service name',
       exportName: 'SSG-ServiceName',
+    });
+
+    new cdk.CfnOutput(this, 'AiServiceName', {
+      value: aiService.serviceName,
+      description: 'AI Service ECS Service name',
+      exportName: 'SSG-AiServiceName',
     });
   }
 }

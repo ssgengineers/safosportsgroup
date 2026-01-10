@@ -7,7 +7,10 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || (
   import.meta.env.PROD ? '/api/v1' : 'http://localhost:8080/api/v1'
 );
-const AI_SERVICE_BASE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000/api/v1';
+// AI service uses same ALB with path-based routing (/api/v1/matching/*, /api/v1/scoring/*, /api/v1/leverage/*)
+const AI_SERVICE_BASE_URL = import.meta.env.VITE_AI_SERVICE_URL || (
+  import.meta.env.PROD ? '/api/v1' : 'http://localhost:8000/api/v1'
+);
 
 // Type declaration for Clerk on window object
 declare global {
