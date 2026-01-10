@@ -59,6 +59,12 @@ export class EcsStack extends cdk.Stack {
     // Grant access to Secrets Manager
     rdsStack.databaseSecret.grantRead(taskExecutionRole);
 
+    // Reference existing Clerk secret
+    const clerkSecret = secretsmanager.Secret.fromSecretNameV2(
+      this, 'ClerkSecret', 'ssg/clerk-secret-key'
+    );
+    clerkSecret.grantRead(taskExecutionRole);
+
     // Grant access to ECR
     ecrStack.repository.grantPull(taskExecutionRole);
 
@@ -108,6 +114,7 @@ export class EcsStack extends cdk.Stack {
           rdsStack.databaseSecret,
           'password'
         ),
+        CLERK_SECRET_KEY: ecs.Secret.fromSecretsManager(clerkSecret),
       },
       healthCheck: {
         command: [
