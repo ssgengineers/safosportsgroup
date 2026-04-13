@@ -68,6 +68,11 @@ aws:
     bucket-name: ${S3_BUCKET_NAME:ssg-media-bucket}
     region: ${AWS_REGION:us-east-2}
 
+# AI Service Configuration
+ai:
+  service:
+    url: ${AI_SERVICE_URL:http://localhost:8000}
+
 # Actuator endpoints
 management:
   endpoints:
