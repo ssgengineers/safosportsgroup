@@ -123,8 +123,8 @@ class BrandCriteria:
         Handles both structured fields (if added to form) and 
         attempts to parse unstructured athletePreferences text.
         """
-        # Determine budget tier
-        budget = brand_data.get("budget", "")
+        # Determine budget tier (brand profiles use budgetRange, intakes use budget)
+        budget = brand_data.get("budgetRange") or brand_data.get("budget", "")
         budget_tier = cls._parse_budget_tier(budget)
         
         # Get industry and map to target tags
@@ -133,16 +133,33 @@ class BrandCriteria:
         
         # Try to extract sports from structured field or preferences text
         preferred_sports = brand_data.get("preferredSports", [])
+        # Handle JSON string (brand profiles may store as JSON string)
+        if isinstance(preferred_sports, str):
+            import json
+            try:
+                preferred_sports = json.loads(preferred_sports)
+            except (json.JSONDecodeError, TypeError):
+                preferred_sports = []
         if not preferred_sports:
             # Try to parse from athletePreferences text
             preferences_text = brand_data.get("athletePreferences", "").lower()
             preferred_sports = cls._extract_sports_from_text(preferences_text)
-        
+
         # Get conferences (structured or empty)
         preferred_conferences = brand_data.get("preferredConferences", [])
+        if isinstance(preferred_conferences, str):
+            import json
+            try:
+                preferred_conferences = json.loads(preferred_conferences)
+            except (json.JSONDecodeError, TypeError):
+                preferred_conferences = []
         
         # Get follower minimum (structured or default based on budget)
-        min_followers = brand_data.get("minFollowers", 0)
+        min_followers_raw = brand_data.get("minFollowers", 0)
+        try:
+            min_followers = int(min_followers_raw) if min_followers_raw else 0
+        except (ValueError, TypeError):
+            min_followers = 0
         if not min_followers:
             # Default based on budget tier
             min_followers = {
@@ -156,7 +173,7 @@ class BrandCriteria:
         
         return cls(
             brand_id=brand_data.get("id", ""),
-            company=brand_data.get("company", ""),
+            company=brand_data.get("companyName") or brand_data.get("company", ""),
             industry=industry,
             budget=budget,
             budget_tier=budget_tier,
@@ -167,7 +184,7 @@ class BrandCriteria:
             preferred_gender=brand_data.get("preferredGender"),
             age_range=brand_data.get("ageRange"),
             target_tags=target_tags,
-            timeline_urgency=brand_data.get("timeline", "flexible"),
+            timeline_urgency=brand_data.get("preferredTimeline") or brand_data.get("timeline", "flexible"),
         )
     
     @staticmethod

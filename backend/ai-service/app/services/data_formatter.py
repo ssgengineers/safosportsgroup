@@ -79,12 +79,18 @@ class DataFormatter:
         """
         formatted = {
             "brand_id": brand_data.get("id") or brand_data.get("brand_id"),
-            "company": brand_data.get("company"),
+            "company": brand_data.get("companyName") or brand_data.get("company"),
             "industry": brand_data.get("industry"),
             "description": brand_data.get("description"),
             "target_audience": brand_data.get("targetAudience") or brand_data.get("target_audience"),
-            "goals": brand_data.get("goals"),
+            "goals": brand_data.get("marketingGoals") or brand_data.get("goals"),
             "values": brand_data.get("brandValues") or brand_data.get("brand_values", []),
+            "budget_range": brand_data.get("budgetRange") or brand_data.get("budget"),
+            "preferred_sports": brand_data.get("preferredSports"),
+            "preferred_conferences": brand_data.get("preferredConferences"),
+            "interest_alignment": brand_data.get("interestAlignment"),
+            "budget_per_athlete": brand_data.get("budgetPerAthlete"),
+            "matching_notes": brand_data.get("matchingNotes"),
         }
         
         if campaign_data:

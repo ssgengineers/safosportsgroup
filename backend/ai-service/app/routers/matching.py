@@ -16,9 +16,13 @@ from datetime import datetime
 from enum import Enum
 
 from app.services.claude_client import ClaudeClient
+from app.services.lm_studio_client import LMStudioClient, get_ai_client
 from app.services.data_formatter import DataFormatter
 from app.services.nil_api_client import NILApiClient
 from app.services.rule_engine import RuleEngine, BrandCriteria
+from app.config import get_settings
+
+settings = get_settings()
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/matching")
@@ -156,8 +160,11 @@ async def find_athlete_matches_hybrid(request: SimpleMatchRequest):
         data_formatter = DataFormatter()
         rule_engine = RuleEngine()
         
-        # Fetch brand data
-        brand_data = await api_client.get_brand_intake(request.brand_id)
+        # Fetch brand profile (enriched with AI matching preferences from dashboard)
+        brand_data = await api_client.get_brand_profile(request.brand_id)
+        if not brand_data:
+            # Fall back to brand intake if profile doesn't exist yet
+            brand_data = await api_client.get_brand_intake(request.brand_id)
         if not brand_data:
             raise HTTPException(status_code=404, detail=f"Brand not found: {request.brand_id}")
         
@@ -180,7 +187,7 @@ async def find_athlete_matches_hybrid(request: SimpleMatchRequest):
         if not athletes_raw:
             return HybridMatchResponse(
                 brand_id=request.brand_id,
-                brand_name=brand_data.get("company"),
+                brand_name=brand_data.get("companyName") or brand_data.get("company"),
                 total_candidates=0,
                 passed_filters=0,
                 ai_analyzed=0,
@@ -199,7 +206,7 @@ async def find_athlete_matches_hybrid(request: SimpleMatchRequest):
         if not top_candidates:
             return HybridMatchResponse(
                 brand_id=request.brand_id,
-                brand_name=brand_data.get("company"),
+                brand_name=brand_data.get("companyName") or brand_data.get("company"),
                 total_candidates=len(athletes_raw),
                 passed_filters=0,
                 ai_analyzed=0,
@@ -318,7 +325,7 @@ async def find_athlete_matches_hybrid(request: SimpleMatchRequest):
         
         return HybridMatchResponse(
             brand_id=request.brand_id,
-            brand_name=brand_data.get("company"),
+            brand_name=brand_data.get("companyName") or brand_data.get("company"),
             total_candidates=len(athletes_raw),
             passed_filters=stats.get("filter_stats", {}).get("passed", 0),
             ai_analyzed=len(top_candidates),
@@ -335,6 +342,306 @@ async def find_athlete_matches_hybrid(request: SimpleMatchRequest):
     except Exception as e:
         logger.error(f"Error in find_athlete_matches_hybrid: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to find matches: {str(e)}")
+
+
+@router.post("/find-local", response_model=HybridMatchResponse)
+async def find_athlete_matches_local(request: SimpleMatchRequest):
+    """
+    Find best matching athletes using LOCAL AI (LM Studio).
+    
+    Uses a local LLM via LM Studio instead of Claude API.
+    Supports agent team mode for parallel processing.
+    
+    This endpoint:
+    1. Uses rule-based filtering first
+    2. Sends top candidates to local LLM for analysis
+    3. Combines scores (40% rules, 60% AI)
+    
+    Set AI_BACKEND=local in environment to use this by default.
+    """
+    try:
+        # Initialize services
+        api_client = NILApiClient()
+        ai_client = LMStudioClient()  # Local LLM
+        data_formatter = DataFormatter()
+        rule_engine = RuleEngine()
+        
+        # Fetch brand profile (enriched with AI matching preferences from dashboard)
+        brand_data = await api_client.get_brand_profile(request.brand_id)
+        if not brand_data:
+            # Fall back to brand intake if profile doesn't exist yet
+            brand_data = await api_client.get_brand_intake(request.brand_id)
+        if not brand_data:
+            raise HTTPException(status_code=404, detail=f"Brand not found: {request.brand_id}")
+        
+        # Merge campaign requirements into brand data
+        if request.campaign_requirements:
+            brand_data.update({
+                "preferredSports": request.campaign_requirements.get("sport_preferences", []),
+                "preferredConferences": request.campaign_requirements.get("conference_preferences", []),
+                "minFollowers": request.campaign_requirements.get("min_followers"),
+                "minEngagement": request.campaign_requirements.get("min_engagement_rate"),
+            })
+        
+        # Fetch athletes
+        if request.athlete_ids:
+            athletes_raw = await api_client.get_athlete_profiles(request.athlete_ids)
+        else:
+            athletes_response = await api_client.get_all_athletes(size=500)
+            athletes_raw = athletes_response.get("content", [])
+        
+        if not athletes_raw:
+            return HybridMatchResponse(
+                brand_id=request.brand_id,
+                brand_name=brand_data.get("companyName") or brand_data.get("company"),
+                total_candidates=0,
+                passed_filters=0,
+                ai_analyzed=0,
+                total_matches=0,
+                matches=[],
+                generated_at=datetime.utcnow()
+            )
+        
+        # STEP 1 & 2: Rule-based filtering and scoring
+        top_candidates, stats = rule_engine.process_matching_request(
+            athletes_raw,
+            brand_data,
+            top_n=20
+        )
+        
+        if not top_candidates:
+            return HybridMatchResponse(
+                brand_id=request.brand_id,
+                brand_name=brand_data.get("companyName") or brand_data.get("company"),
+                total_candidates=len(athletes_raw),
+                passed_filters=0,
+                ai_analyzed=0,
+                total_matches=0,
+                matches=[],
+                filter_stats=stats.get("filter_stats"),
+                generated_at=datetime.utcnow()
+            )
+        
+        # STEP 3: Local LLM analysis for top candidates
+        brand_formatted = data_formatter.format_brand_campaign(
+            brand_data,
+            request.campaign_requirements
+        )
+        
+        # Get original athlete data for top candidates
+        top_athlete_ids = {c.athlete_id for c in top_candidates}
+        top_athletes_raw = [a for a in athletes_raw if str(a.get("id", "")) in top_athlete_ids]
+        
+        # Format for LLM
+        athletes_formatted = []
+        for athlete in top_athletes_raw:
+            formatted = data_formatter.format_athlete_profile(athlete)
+            formatted["athlete_id"] = str(athlete.get("id", ""))
+            rule_result = next((c for c in top_candidates if c.athlete_id == formatted["athlete_id"]), None)
+            if rule_result:
+                formatted["rule_score"] = rule_result.total_score
+                formatted["rule_reasons"] = rule_result.score_reasons
+            athletes_formatted.append(formatted)
+        
+        # Call Local LLM for analysis
+        all_matches = []
+        batch_size = 5  # Smaller batches for local models
+        
+        for i in range(0, len(athletes_formatted), batch_size):
+            batch = athletes_formatted[i:i + batch_size]
+            
+            try:
+                batch_results = await ai_client.analyze_batch_matches(
+                    batch,
+                    brand_formatted,
+                    request.campaign_requirements
+                )
+                
+                for j, result in enumerate(batch_results):
+                    if j < len(batch):
+                        athlete_id = batch[j]["athlete_id"]
+                        result["athlete_id"] = athlete_id
+                        
+                        original = next((a for a in athletes_raw if str(a.get("id", "")) == athlete_id), {})
+                        rule_result = next((c for c in top_candidates if c.athlete_id == athlete_id), None)
+                        
+                        result["athlete_name"] = original.get("fullName") or f"{original.get('firstName', '')} {original.get('lastName', '')}".strip()
+                        result["sport"] = original.get("sport")
+                        result["school"] = original.get("schoolName") or original.get("school")
+                        
+                        # Combine scores
+                        rule_score = rule_result.total_score if rule_result else 50
+                        ai_score = result.get("match_score", 50)
+                        result["match_score"] = round(rule_score * 0.4 + ai_score * 0.6, 1)
+                        
+                        if rule_result:
+                            result["match_reasons"] = rule_result.score_reasons + result.get("match_reasons", [])
+                        
+                        result["component_scores"] = {
+                            "rule_based": rule_score,
+                            "ai_analysis": ai_score,
+                            "backend": "local",
+                            **(rule_result.component_scores if rule_result else {})
+                        }
+                        
+                        all_matches.append(result)
+                        
+            except Exception as e:
+                logger.error(f"Error in local LLM batch analysis: {e}")
+                # Fall back to rule-based scores only
+                for j, athlete in enumerate(batch):
+                    rule_result = next((c for c in top_candidates if c.athlete_id == athlete["athlete_id"]), None)
+                    if rule_result:
+                        original = next((a for a in athletes_raw if str(a.get("id", "")) == athlete["athlete_id"]), {})
+                        all_matches.append({
+                            "athlete_id": athlete["athlete_id"],
+                            "athlete_name": original.get("fullName") or f"{original.get('firstName', '')} {original.get('lastName', '')}".strip(),
+                            "sport": original.get("sport"),
+                            "school": original.get("schoolName") or original.get("school"),
+                            "match_score": rule_result.total_score,
+                            "match_reasons": rule_result.score_reasons + ["[Local AI unavailable - using rule-based score only]"],
+                            "concerns": [],
+                            "estimated_reach": 0,
+                            "component_scores": {"rule_based": rule_result.total_score, "backend": "local"}
+                        })
+        
+        # Sort and limit
+        all_matches.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+        top_matches = all_matches[:request.max_results]
+        
+        # Convert to response model
+        match_results = [
+            AthleteMatchResult(
+                athlete_id=m["athlete_id"],
+                athlete_name=m.get("athlete_name"),
+                sport=m.get("sport"),
+                school=m.get("school"),
+                match_score=m["match_score"],
+                match_reasons=m.get("match_reasons", []),
+                concerns=m.get("concerns", []),
+                estimated_reach=m.get("estimated_reach", 0),
+                suggested_rate=m.get("suggested_rate"),
+                component_scores=m.get("component_scores")
+            )
+            for m in top_matches
+        ]
+        
+        return HybridMatchResponse(
+            brand_id=request.brand_id,
+            brand_name=brand_data.get("companyName") or brand_data.get("company"),
+            total_candidates=len(athletes_raw),
+            passed_filters=stats.get("filter_stats", {}).get("passed", 0),
+            ai_analyzed=len(top_candidates),
+            total_matches=len(match_results),
+            matches=match_results,
+            filter_stats={**stats.get("filter_stats", {}), "backend": "local"},
+            generated_at=datetime.utcnow()
+        )
+        
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=f"Configuration error: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in find_athlete_matches_local: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to find matches: {str(e)}")
+
+
+@router.post("/find-agents")
+async def find_athlete_matches_with_agents(request: SimpleMatchRequest):
+    """
+    Find best matching athletes using AGENT TEAM mode.
+    
+    Spawns specialized agents that work in parallel:
+    - Scoring Agent: Calculates quantitative scores
+    - Match Analyzer Agent: Performs qualitative analysis
+    
+    This is the most powerful but also most resource-intensive option.
+    Best for complex matching tasks with many athletes.
+    """
+    try:
+        from app.agents.coordinator import CoordinatorAgent
+        
+        # Initialize services
+        api_client = NILApiClient()
+        data_formatter = DataFormatter()
+        rule_engine = RuleEngine()
+        
+        # Fetch brand profile (enriched with AI matching preferences from dashboard)
+        brand_data = await api_client.get_brand_profile(request.brand_id)
+        if not brand_data:
+            # Fall back to brand intake if profile doesn't exist yet
+            brand_data = await api_client.get_brand_intake(request.brand_id)
+        if not brand_data:
+            raise HTTPException(status_code=404, detail=f"Brand not found: {request.brand_id}")
+        
+        # Fetch athletes
+        if request.athlete_ids:
+            athletes_raw = await api_client.get_athlete_profiles(request.athlete_ids)
+        else:
+            athletes_response = await api_client.get_all_athletes(size=100)
+            athletes_raw = athletes_response.get("content", [])
+        
+        if not athletes_raw:
+            return {
+                "brand_id": request.brand_id,
+                "total_candidates": 0,
+                "matches": [],
+                "mode": "agent_team",
+                "generated_at": datetime.utcnow().isoformat()
+            }
+        
+        # Rule-based pre-filtering
+        top_candidates, stats = rule_engine.process_matching_request(
+            athletes_raw,
+            brand_data,
+            top_n=30
+        )
+        
+        # Format data for agents
+        brand_formatted = data_formatter.format_brand_campaign(
+            brand_data,
+            request.campaign_requirements
+        )
+        
+        athletes_formatted = []
+        for athlete in athletes_raw:
+            formatted = data_formatter.format_athlete_profile(athlete)
+            formatted["athlete_id"] = str(athlete.get("id", ""))
+            athletes_formatted.append(formatted)
+        
+        # Create coordinator and run matching
+        coordinator = CoordinatorAgent(use_redis=False)  # In-memory for simplicity
+        await coordinator.task_queue.connect()
+        await coordinator.mailbox.connect()
+        
+        try:
+            results = await coordinator.run_matching_task(
+                brand_formatted,
+                athletes_formatted,
+                request.campaign_requirements
+            )
+            
+            return {
+                "brand_id": request.brand_id,
+                "brand_name": brand_data.get("companyName") or brand_data.get("company"),
+                "total_candidates": results.get("total_athletes", 0),
+                "scored": results.get("scored", 0),
+                "analyzed": results.get("analyzed", 0),
+                "matches": results.get("matches", [])[:request.max_results],
+                "mode": "agent_team",
+                "team_id": coordinator.team_id,
+                "generated_at": results.get("generated_at")
+            }
+            
+        finally:
+            await coordinator.cleanup()
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in find_athlete_matches_with_agents: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to run agent matching: {str(e)}")
 
 
 @router.post("/find", response_model=MatchResponse)
@@ -359,8 +666,11 @@ async def find_athlete_matches(request: SimpleMatchRequest):
         claude_client = ClaudeClient()
         data_formatter = DataFormatter()
 
-        # Fetch brand data
-        brand_data = await api_client.get_brand_intake(request.brand_id)
+        # Fetch brand profile (enriched with AI matching preferences from dashboard)
+        brand_data = await api_client.get_brand_profile(request.brand_id)
+        if not brand_data:
+            # Fall back to brand intake if profile doesn't exist yet
+            brand_data = await api_client.get_brand_intake(request.brand_id)
         if not brand_data:
             raise HTTPException(status_code=404, detail=f"Brand not found: {request.brand_id}")
 
@@ -382,7 +692,7 @@ async def find_athlete_matches(request: SimpleMatchRequest):
         if not athletes_raw:
             return MatchResponse(
                 brand_id=request.brand_id,
-                brand_name=brand_data.get("company"),
+                brand_name=brand_data.get("companyName") or brand_data.get("company"),
                 total_candidates=0,
                 total_matches=0,
                 matches=[],
@@ -463,7 +773,7 @@ async def find_athlete_matches(request: SimpleMatchRequest):
 
         return MatchResponse(
             brand_id=request.brand_id,
-            brand_name=brand_data.get("company"),
+            brand_name=brand_data.get("companyName") or brand_data.get("company"),
             total_candidates=len(athletes_raw),
             total_matches=len(match_results),
             matches=match_results,

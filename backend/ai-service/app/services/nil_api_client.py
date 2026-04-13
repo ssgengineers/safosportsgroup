@@ -125,6 +125,39 @@ class NILApiClient:
             logger.error(f"Request error fetching athletes: {e}")
             return {"content": [], "totalElements": 0}
 
+    async def get_brand_profile(self, brand_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch a brand profile by ID.
+
+        Uses the brand profile endpoint which contains enriched data
+        including AI matching preferences (preferredSports, preferredConferences,
+        interestAlignment, budgetPerAthlete, etc.) set by brands in the dashboard.
+
+        Args:
+            brand_id: UUID of the brand profile
+
+        Returns:
+            Brand profile data or None if not found
+        """
+        url = f"{self.base_url}/api/v1/brands/{brand_id}"
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url)
+
+                if response.status_code == 200:
+                    return response.json()
+                elif response.status_code == 404:
+                    logger.warning(f"Brand profile not found: {brand_id}")
+                    return None
+                else:
+                    logger.error(f"Failed to fetch brand profile {brand_id}: {response.status_code}")
+                    return None
+
+        except httpx.RequestError as e:
+            logger.error(f"Request error fetching brand profile {brand_id}: {e}")
+            return None
+
     async def get_brand_intake(self, brand_id: str) -> Optional[Dict[str, Any]]:
         """
         Fetch a brand intake request by ID.
@@ -136,7 +169,7 @@ class NILApiClient:
             Brand intake data or None if not found
         """
         # Try admin endpoint for brand intake details
-        url = f"{self.base_url}/api/v1/admin/intakes/brands/{brand_id}"
+        url = f"{self.base_url}/api/v1/admin/intake/brands/{brand_id}"
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -172,7 +205,7 @@ class NILApiClient:
         Returns:
             Paginated response with content and metadata
         """
-        url = f"{self.base_url}/api/v1/admin/intakes/brands"
+        url = f"{self.base_url}/api/v1/admin/intake/brands"
         params = {"page": page, "size": size}
 
         if status:
