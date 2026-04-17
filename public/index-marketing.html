@@ -1550,22 +1550,53 @@ function openArticle(slug) {
   go('article');
 }
 
+var validPages = ['home', 'about', 'services', 'ai', 'roster', 'brands', 'news', 'article', 'contact'];
+
+function normalizePage(page) {
+  if (!page) return 'home';
+  var cleaned = String(page).toLowerCase();
+  return validPages.indexOf(cleaned) >= 0 ? cleaned : 'home';
+}
+
+function revealPageElements(pageId) {
+  var target = document.getElementById('pg-' + pageId);
+  if (!target) return null;
+  target.classList.add('active');
+  target.scrollTop = 0;
+  document.querySelectorAll('.nav-links a').forEach(function(a) {
+    a.classList.toggle('active', a.dataset.p === pageId);
+  });
+  setTimeout(function() {
+    target.querySelectorAll('.fade-up').forEach(function(el, i) {
+      el.classList.remove('vis');
+      setTimeout(function() { el.classList.add('vis'); }, i * 70);
+    });
+  }, 60);
+  return target;
+}
+
+function showPage(pageId) {
+  var resolved = normalizePage(pageId);
+  document.querySelectorAll('.page').forEach(function(p) {
+    p.classList.remove('active');
+    p.scrollTop = 0;
+  });
+  return revealPageElements(resolved);
+}
+
+function resolveInitialPage() {
+  var params = new URLSearchParams(window.location.search);
+  var fromQuery = params.get('page');
+  var fromHash = window.location.hash ? window.location.hash.replace('#', '') : '';
+  return normalizePage(fromQuery || fromHash || 'home');
+}
+
 function go(page) {
   var loader = document.getElementById('bb-loader');
   loader.classList.remove('hide');
   loader.classList.add('show');
   setTimeout(function() {
-    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); p.scrollTop = 0; });
-    var t = document.getElementById('pg-' + page);
-    if (t) { t.classList.add('active'); t.scrollTop = 0; }
-    document.querySelectorAll('.nav-links a').forEach(function(a) { a.classList.toggle('active', a.dataset.p === page); });
-    setTimeout(function() {
-      if (!t) return;
-      t.querySelectorAll('.fade-up').forEach(function(el, i) {
-        el.classList.remove('vis');
-        setTimeout(function() { el.classList.add('vis'); }, i * 70);
-      });
-    }, 60);
+    showPage(page);
     setTimeout(function() {
       loader.classList.remove('show');
       loader.classList.add('hide');
@@ -1576,14 +1607,11 @@ function go(page) {
 
 window.addEventListener('load', function() {
   var loader = document.getElementById('bb-loader');
+  var initialPage = resolveInitialPage();
   setTimeout(function() {
     loader.classList.remove('show');
     loader.classList.add('hide');
-    var home = document.getElementById('pg-home');
-    home.classList.add('active');
-    home.querySelectorAll('.fade-up').forEach(function(el, i) {
-      setTimeout(function() { el.classList.add('vis'); }, i * 70);
-    });
+    showPage(initialPage);
   }, 1100);
 });
 

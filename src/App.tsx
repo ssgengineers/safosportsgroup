@@ -9,6 +9,7 @@ import AIFeatures from "./pages/AIFeatures";
 import About from "./pages/About";
 import Timeline from "./pages/Timeline";
 import Contact from "./pages/Contact";
+import MarketingDraft from "./pages/MarketingDraft";
 import AthleteIntake from "./pages/AthleteIntake";
 import BrandIntake from "./pages/BrandIntake";
 import ForUniversities from "./pages/ForUniversities";
@@ -33,15 +34,27 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/how-it-works" element={<HowItWorks />} />
-          <Route path="/ai-features" element={<AIFeatures />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/timeline" element={<Timeline />} />
-          <Route path="/contact" element={<Contact />} />
+          <Route path="/" element={<MarketingDraft page="home" />} />
+          <Route path="/about" element={<MarketingDraft page="about" />} />
+          <Route path="/how-it-works" element={<MarketingDraft page="services" />} />
+          <Route path="/services" element={<MarketingDraft page="services" />} />
+          <Route path="/ai-features" element={<MarketingDraft page="ai" />} />
+          <Route path="/safo-ai" element={<MarketingDraft page="ai" />} />
+          <Route path="/timeline" element={<MarketingDraft page="about" />} />
+          <Route path="/for-universities" element={<MarketingDraft page="brands" />} />
+          <Route path="/for-brands" element={<MarketingDraft page="brands" />} />
+          <Route path="/roster" element={<MarketingDraft page="roster" />} />
+          <Route path="/news" element={<MarketingDraft page="news" />} />
+          <Route path="/contact" element={<MarketingDraft page="contact" />} />
+          <Route path="/legacy-home" element={<Index />} />
+          <Route path="/legacy/about" element={<About />} />
+          <Route path="/legacy/how-it-works" element={<HowItWorks />} />
+          <Route path="/legacy/ai-features" element={<AIFeatures />} />
+          <Route path="/legacy/timeline" element={<Timeline />} />
+          <Route path="/legacy/contact" element={<Contact />} />
+          <Route path="/legacy/for-universities" element={<ForUniversities />} />
           <Route path="/athlete-intake" element={<AthleteIntake />} />
           <Route path="/brand-intake" element={<BrandIntake />} />
-          <Route path="/for-universities" element={<ForUniversities />} />
           <Route path="/sign-in" element={<SignIn />} />
           <Route path="/sign-up" element={<SignUp />} />
           <Route path="/admin" element={<ProtectedAdminRoute><Admin /></ProtectedAdminRoute>} />
