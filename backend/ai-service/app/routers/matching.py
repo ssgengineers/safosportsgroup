@@ -157,7 +157,7 @@ async def find_athlete_matches_hybrid(request: SimpleMatchRequest):
         rule_engine = RuleEngine()
         
         # Fetch brand data (handles both brand profile and brand intake)
-        brand_data = await api_client.get_brand_intake(request.brand_id)
+        brand_data = await api_client.get_brand_profile(request.brand_id)
         if not brand_data:
             raise HTTPException(status_code=404, detail=f"Brand not found: {request.brand_id}")
         
@@ -382,7 +382,7 @@ async def find_athlete_matches(request: SimpleMatchRequest):
         data_formatter = DataFormatter()
 
         # Fetch brand data (handles both brand profile and brand intake)
-        brand_data = await api_client.get_brand_intake(request.brand_id)
+        brand_data = await api_client.get_brand_profile(request.brand_id)
         if not brand_data:
             raise HTTPException(status_code=404, detail=f"Brand not found: {request.brand_id}")
 

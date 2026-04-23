@@ -257,7 +257,7 @@ class NILApiClient:
             return intake_format
 
         # Fall back to brand intake endpoint
-        url = f"{self.base_url}/api/v1/admin/intakes/brands/{brand_id}"
+        url = f"{self.base_url}/api/v1/admin/intake/brands/{brand_id}"
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -331,7 +331,7 @@ class NILApiClient:
         Returns:
             Paginated response with content and metadata
         """
-        url = f"{self.base_url}/api/v1/admin/intakes/brands"
+        url = f"{self.base_url}/api/v1/admin/intake/brands"
         params = {"page": page, "size": size}
 
         if status:
